@@ -1,0 +1,45 @@
+# 依赖
+node_modules/
+
+# 构建产物与安装包（安装包请放到 GitHub Releases，不要提交到 Git）
+release/
+dist/
+out/
+*.blockmap
+*.nsis.7z
+
+# 本地运行数据（包含课件索引与缓存）
+data/
+**/data/.runtime/
+
+# 日志与临时文件
+*.log
+startup.log
+*.tmp
+*.bak
+install-out.log
+install-err.log
+install2-out.log
+install2-err.log
+second-out.log
+second-err.log
+
+# 本地测试与导出文件
+test-courseware/
+zzbz-*export*/
+zzbz-*-test/
+zzbz-*-export*/
+*.lnk
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量与密钥
+.env
+.env.*
+*.pem
+*.key

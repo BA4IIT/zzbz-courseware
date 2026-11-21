@@ -1,0 +1,91 @@
+{
+  "name": "zzbz-courseware-app",
+  "productName": "枣庄八中高中课件管理系统",
+  "version": "1.2.0",
+  "description": "枣庄八中高中课件管理系统 · 九大学科三年教材本地课件资源管理",
+  "main": "main.js",
+  "author": "枣庄市第八中学",
+  "contributors": [
+    {
+      "name": "陈凯阳",
+      "email": "ba4iitqrz@163.com"
+    },
+    {
+      "name": "孙浩翔"
+    },
+    {
+      "name": "桑晨皓"
+    },
+    {
+      "name": "任泽昱"
+    }
+  ],
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "pack": "electron-builder --win dir",
+    "dist": "node scripts/build-installer.mjs",
+    "dist:portable": "node scripts/build-portable.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "cn.edu.zzbz.courseware",
+    "productName": "枣庄八中高中课件管理系统",
+    "copyright": "Copyright © 2026 枣庄市第八中学",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "使用说明.txt",
+        "to": "使用说明.txt"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "枣庄八中高中课件管理系统-${version}-安装包.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "枣庄八中高中课件管理系统",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "artifactName": "枣庄八中高中课件管理系统-${version}-安装包.${ext}"
+    },
+    "portable": {
+      "artifactName": "枣庄八中高中课件管理系统-${version}-绿色版.${ext}",
+      "requestExecutionLevel": "user"
+    }
+  },
+  "dependencies": {
+    "archiver": "^7.0.1"
+  }
+}

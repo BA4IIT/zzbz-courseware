@@ -1,0 +1,465 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: cwfile: file:; media-src 'self' blob: cwfile:; frame-src 'self' cwfile: chrome-extension:; connect-src 'self' cwfile:; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>枣庄八中 · 高中课件管理系统</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-window" id="appWindow">
+    <header class="titlebar" id="titlebar">
+      <div class="titlebar-brand">
+        <span class="mini-mark" aria-hidden="true"><img src="../assets/school-badge.png" alt=""></span>
+        <span class="titlebar-school">枣庄八中</span>
+        <span class="titlebar-sep"></span>
+        <span class="titlebar-product">高中课件管理系统</span>
+        <span class="edition-tag">本地版</span>
+      </div>
+      <div class="titlebar-grip" aria-hidden="true"></div>
+      <div class="window-controls">
+        <button type="button" class="win-btn" id="winMinimize" aria-label="最小化" title="最小化">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" class="win-btn" id="winMaximize" aria-label="最大化" title="最大化">
+          <svg class="max-icon" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+          <svg class="restore-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.2 3V2.4c0-.5.4-.9.9-.9h4.5c.5 0 .9.4.9.9v4.5c0 .5-.4.9-.9.9H9" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="2" y="4" width="6" height="6" rx=".9" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+        </button>
+        <button type="button" class="win-btn win-close" id="winClose" aria-label="关闭" title="关闭">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2.6 2.6 6.8 6.8M9.4 2.6 2.6 9.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <aside class="sidebar" id="sidebar">
+        <div class="school-card">
+          <div class="school-emblem" aria-hidden="true"><img src="../assets/school-badge.png" alt=""></div>
+          <div class="school-copy">
+            <strong>枣庄八中</strong>
+            <span>教学资源中心</span>
+          </div>
+          <span class="school-year" id="schoolYear">2026—2027</span>
+        </div>
+
+        <div class="sidebar-scroll">
+          <nav class="nav-group" aria-label="工作台">
+            <div class="nav-label">工作台 <span>WORKSPACE</span></div>
+            <button type="button" class="nav-item is-active" data-page="library">
+              <span class="nav-icon" data-icon="grid"></span>
+              <span class="nav-text">课件库</span>
+              <span class="nav-badge" id="navCount">0</span>
+            </button>
+            <button type="button" class="nav-item" data-page="catalog">
+              <span class="nav-icon" data-icon="book"></span>
+              <span class="nav-text">教材目录</span>
+              <span class="nav-badge soft" id="navCatalogCount">0</span>
+            </button>
+            <button type="button" class="nav-item" data-page="types">
+              <span class="nav-icon" data-icon="layers"></span>
+              <span class="nav-text">课程分类</span>
+              <span class="nav-badge soft" id="navTypesCount">0</span>
+            </button>
+            <button type="button" class="nav-item" data-page="data">
+              <span class="nav-icon" data-icon="database"></span>
+              <span class="nav-text">数据管理</span>
+            </button>
+          </nav>
+
+          <nav class="nav-group" aria-label="快捷视图">
+            <div class="nav-label">快捷视图 <span>QUICK VIEW</span></div>
+            <button type="button" class="nav-item slim" data-quick="recent">
+              <span class="nav-icon" data-icon="clock"></span>
+              <span class="nav-text">最近使用</span>
+            </button>
+            <button type="button" class="nav-item slim" data-quick="favorites">
+              <span class="nav-icon" data-icon="star"></span>
+              <span class="nav-text">我的收藏</span>
+              <span class="nav-badge soft" id="favCount">0</span>
+            </button>
+            <button type="button" class="nav-item slim" data-quick="incomplete">
+              <span class="nav-icon" data-icon="alert"></span>
+              <span class="nav-text">待完善分类</span>
+              <span class="nav-badge soft" id="incompleteCount">0</span>
+            </button>
+          </nav>
+
+          <div class="nav-group subject-group">
+            <div class="nav-label">学科分类 <span>9 SUBJECTS</span></div>
+            <div id="subjectNav" class="subject-nav"></div>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <button type="button" class="storage-mini" id="storageMini" title="打开数据存储文件夹">
+            <span class="storage-mini-icon" data-icon="hardDrive"></span>
+            <span class="storage-mini-copy"><strong>本机资源</strong><small id="storageMiniText">仅索引，不复制原件</small></span>
+            <span class="storage-dot" aria-hidden="true"></span>
+          </button>
+          <p class="sidebar-copyright">枣庄市第八中学 · 教学信息化中心</p>
+        </div>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="context-block">
+            <span class="context-icon" data-icon="spark"></span>
+            <div class="context-copy">
+              <span>枣庄八中</span>
+              <strong id="contextTitle">教学资源中心</strong>
+            </div>
+          </div>
+          <label class="search-box" for="globalSearch">
+            <span class="search-icon" data-icon="search"></span>
+            <input id="globalSearch" type="search" autocomplete="off" placeholder="搜索课件、章节或标签…" aria-label="搜索课件、章节或标签">
+            <kbd>Ctrl K</kbd>
+          </label>
+          <div class="topbar-actions">
+            <div class="save-state" id="saveState" title="数据保存在本机">
+              <span class="save-dot"></span><span id="saveStateText">已本地保存</span>
+            </div>
+            <button type="button" class="icon-button" id="helpButton" title="使用指南" aria-label="使用指南">
+              <span data-icon="help"></span>
+            </button>
+            <button type="button" class="btn btn-primary top-import" id="topImportButton">
+              <span data-icon="upload"></span><span>导入课件</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="main-scroll" id="mainScroll">
+          <div class="page-wrap">
+            <!-- 课件库 -->
+            <section class="page-panel is-active" id="page-library" data-panel="library">
+              <div class="hero">
+                <div class="hero-copy">
+                  <div class="hero-eyebrow"><span class="eyebrow-dot"></span> ZAOZHUANG NO.8 HIGH SCHOOL · RESOURCE CENTER</div>
+                  <h1>让每一份课件，<span>各归其位。</span></h1>
+                  <p>九大学科、三个年级、完整教材目录，本地文件一处归档。<br>原件保留在原来的位置，查找却从此简单。</p>
+                  <div class="hero-actions">
+                    <button type="button" class="btn btn-primary btn-lg" data-action="import">
+                      <span data-icon="upload"></span><span>导入本地课件</span>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-lg" data-goto="catalog">
+                      <span>浏览教材目录</span><span data-icon="arrowRight"></span>
+                    </button>
+                  </div>
+                </div>
+                <div class="hero-visual" aria-hidden="true">
+                  <span class="hero-ring ring-one"></span>
+                  <span class="hero-ring ring-two"></span>
+                  <span class="hero-dots"></span>
+                  <div class="floating-board">
+                    <div class="board-top">
+                      <span class="board-title">学科资源图谱</span>
+                      <span class="board-status"><i></i>本地</span>
+                    </div>
+                    <div class="board-subjects" id="heroSubjectDots"></div>
+                    <div class="board-meta">
+                      <div><strong>9</strong><span>学科</span></div>
+                      <div><strong>3</strong><span>年级</span></div>
+                      <div><strong>59</strong><span>教材/专题</span></div>
+                    </div>
+                    <div class="board-progress"><i></i></div>
+                  </div>
+                  <span class="floating-chip chip-1"><span data-icon="book"></span>完整教材体系</span>
+                  <span class="floating-chip chip-2"><span data-icon="shield"></span>本机私有存储</span>
+                </div>
+              </div>
+
+              <div class="stat-grid">
+                <article class="stat-card">
+                  <span class="stat-icon blue" data-icon="files"></span>
+                  <div class="stat-main"><span>课件总数</span><strong id="statTotal">0</strong></div>
+                  <span class="stat-extra" id="statTotalSub">等待导入</span>
+                </article>
+                <article class="stat-card">
+                  <span class="stat-icon sky" data-icon="subject"></span>
+                  <div class="stat-main"><span>已覆盖学科</span><strong id="statSubjects">0<small>/9</small></strong></div>
+                  <span class="stat-extra" id="statSubjectsSub">九科齐全</span>
+                </article>
+                <article class="stat-card">
+                  <span class="stat-icon aqua" data-icon="database"></span>
+                  <div class="stat-main"><span>资源总容量</span><strong id="statSize">0 MB</strong></div>
+                  <span class="stat-extra" id="statSizeSub">本地引用</span>
+                </article>
+                <article class="stat-card">
+                  <span class="stat-icon indigo" data-icon="bookOpen"></span>
+                  <div class="stat-main"><span>教材目录</span><strong id="statBooks">0<small>本</small></strong></div>
+                  <span class="stat-extra" id="statBooksSub">章节已就绪</span>
+                </article>
+              </div>
+
+              <div class="demo-notice" id="demoNotice" hidden>
+                <span class="demo-notice-icon" data-icon="info"></span>
+                <p><strong>正在展示示例课件</strong>，用于预览系统效果。导入你的第一份本地课件后，可一键清除示例数据。</p>
+                <button type="button" class="text-button" id="clearDemoButton">清除示例</button>
+                <button type="button" class="icon-button tiny" id="dismissDemoButton" aria-label="关闭提示"><span data-icon="close"></span></button>
+              </div>
+
+              <section class="resource-area">
+                <div class="section-heading">
+                  <div>
+                    <div class="section-kicker" id="listKicker">RESOURCE LIBRARY</div>
+                    <h2 id="listTitle">全部课件</h2>
+                    <p id="listSubtitle">按学科、教材和章节快速定位你的教学资源</p>
+                  </div>
+                  <div class="section-actions">
+                    <button type="button" class="btn btn-soft" data-action="batch-entry" title="批量录入多份课件文件"><span data-icon="sheet"></span>批量录入</button>
+                    <button type="button" class="btn btn-soft" data-action="batch-download" title="将选中课件打包成 ZIP 下载保存"><span data-icon="download"></span>批量下载</button>
+                    <button type="button" class="btn btn-ghost" data-action="batch-save" title="将选中课件另存到本机文件夹"><span data-icon="folder"></span>批量另存</button>
+                    <button type="button" class="btn btn-soft" data-action="import"><span data-icon="plus"></span>添加课件</button>
+                  </div>
+                </div>
+
+                <div class="toolbar">
+                  <div class="toolbar-main">
+                    <div class="grade-tabs" id="gradeTabs" role="tablist" aria-label="年级筛选"></div>
+                    <div class="filter-controls">
+                      <label class="filter-select" title="按教材筛选">
+                        <span class="select-prefix" data-icon="book"></span>
+                        <select id="bookFilter" aria-label="按教材筛选"></select>
+                        <span class="select-chevron" data-icon="chevronDown"></span>
+                      </label>
+                      <label class="filter-select chapter-filter" title="按章节筛选">
+                        <span class="select-prefix" data-icon="list"></span>
+                        <select id="chapterFilter" aria-label="按章节筛选"></select>
+                        <span class="select-chevron" data-icon="chevronDown"></span>
+                      </label>
+                      <label class="filter-select type-filter" title="按课程分类筛选">
+                        <span class="select-prefix" data-icon="tag"></span>
+                        <select id="typeFilter" aria-label="按课程分类筛选"></select>
+                        <span class="select-chevron" data-icon="chevronDown"></span>
+                      </label>
+                    </div>
+                    <div class="toolbar-end">
+                      <label class="sort-select" title="排序">
+                        <select id="sortSelect" aria-label="排序方式">
+                          <option value="newest">最近添加</option>
+                          <option value="oldest">最早添加</option>
+                          <option value="name">名称排序</option>
+                          <option value="size">文件大小</option>
+                        </select>
+                        <span data-icon="chevronDown"></span>
+                      </label>
+                      <div class="view-switch" role="group" aria-label="视图切换">
+                        <button type="button" class="view-btn is-active" data-view="grid" title="卡片视图" aria-label="卡片视图"><span data-icon="gridView"></span></button>
+                        <button type="button" class="view-btn" data-view="list" title="列表视图" aria-label="列表视图"><span data-icon="listView"></span></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="active-filters" id="activeFilters" hidden></div>
+                </div>
+
+                <div class="results-meta" id="resultsMeta"></div>
+                <div class="files-area" id="filesArea">
+                  <div class="file-grid" id="fileGrid"></div>
+                  <div class="file-list" id="fileList" hidden></div>
+                </div>
+                <div class="empty-state" id="emptyState" hidden></div>
+                <div class="load-more-wrap" id="loadMoreWrap" hidden>
+                  <button type="button" class="btn btn-light" id="loadMoreButton">显示更多课件</button>
+                </div>
+              </section>
+            </section>
+
+            <!-- 教材目录 -->
+            <section class="page-panel" id="page-catalog" data-panel="catalog" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> CURRICULUM CATALOG</div>
+                  <h1>教材目录</h1>
+                  <p>九大学科 · 三个年级 · 必修与选择性必修全覆盖，按章节直达课件资源。</p>
+                </div>
+                <div class="heading-metrics">
+                  <div><strong id="catalogSubjectCount">9</strong><span>学科</span></div>
+                  <div><strong id="catalogBookCount">59</strong><span>教材/专题</span></div>
+                  <div><strong id="catalogChapterCount">0</strong><span>章节/专题</span></div>
+                </div>
+              </div>
+              <div class="catalog-toolbar">
+                <div class="grade-tabs" id="catalogGradeTabs" role="tablist" aria-label="教材年级筛选"></div>
+                <div class="catalog-note"><span data-icon="info"></span>教材以统编版 / 人教版 2019 新课标为基准，高三复习专题单列。</div>
+              </div>
+              <div class="catalog-layout">
+                <aside class="catalog-panel subject-panel">
+                  <div class="panel-head"><div><span class="panel-kicker">SUBJECTS</span><h3>学科分类</h3></div><span class="panel-badge" id="catalogFilteredCount">9</span></div>
+                  <div class="catalog-subject-list" id="catalogSubjects"></div>
+                </aside>
+                <section class="catalog-panel books-panel">
+                  <div class="panel-head">
+                    <div><span class="panel-kicker">TEXTBOOKS</span><h3 id="catalogBooksTitle">语文教材</h3></div>
+                    <span class="panel-badge" id="catalogBookFilteredCount">0 本</span>
+                  </div>
+                  <div class="catalog-book-list" id="catalogBooks"></div>
+                </section>
+                <section class="catalog-panel chapters-panel">
+                  <div class="panel-head chapter-head">
+                    <div><span class="panel-kicker">CHAPTERS</span><h3 id="catalogChaptersTitle">选择一个教材</h3></div>
+                    <button type="button" class="text-button small" id="catalogViewAllButton">查看全部课件</button>
+                  </div>
+                  <div class="catalog-chapter-list" id="catalogChapters"></div>
+                </section>
+              </div>
+            </section>
+
+            <!-- 课程分类 -->
+            <section class="page-panel" id="page-types" data-panel="types" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> COURSE TAXONOMY</div>
+                  <h1>课程分类</h1>
+                  <p>按教学场景组织资源：新授、复习、实验、微课与备考专题，各有清晰归属。</p>
+                </div>
+                <button type="button" class="btn btn-soft" data-action="import"><span data-icon="plus"></span>导入课件</button>
+              </div>
+              <div class="type-summary" id="typeSummary"></div>
+              <div class="type-grid" id="typeGrid"></div>
+              <div class="matrix-card">
+                <div class="matrix-head">
+                  <div><span class="panel-kicker">COVERAGE MATRIX</span><h3>学科 × 课程分类</h3><p>点击任意数量，直接筛选对应课件。空白格表示该分类暂未归档资源。</p></div>
+                  <div class="matrix-legend"><span class="legend-dot"></span>数字为课件份数</div>
+                </div>
+                <div class="matrix-scroll">
+                  <table class="coverage-matrix" id="coverageMatrix"></table>
+                </div>
+              </div>
+            </section>
+
+            <!-- 数据管理 -->
+            <section class="page-panel" id="page-data" data-panel="data" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> LOCAL DATA</div>
+                  <h1>数据管理</h1>
+                  <p>课件原件保留在本机原路径，系统只在本机保存分类索引与个人整理信息。</p>
+                </div>
+                <button type="button" class="btn btn-ghost" id="openDataDirTop"><span data-icon="folder"></span>打开数据文件夹</button>
+              </div>
+              <div class="data-grid">
+                <section class="data-card storage-overview">
+                  <div class="data-card-head"><div><span class="panel-kicker">LOCAL STORAGE</span><h3>本机资源概览</h3></div><span class="local-pill"><i></i>仅本机可见</span></div>
+                  <div class="storage-hero">
+                    <div class="storage-ring" id="storageRing"><span id="storagePercent">0<small>%</small></span><em>分类完整</em></div>
+                    <div class="storage-copy">
+                      <span>已索引资源容量</span>
+                      <strong id="dataTotalSize">0 MB</strong>
+                      <p id="dataTotalFiles">0 份课件 · 0 个学科</p>
+                    </div>
+                  </div>
+                  <div class="data-facts">
+                    <div><span>演示记录</span><strong id="dataDemoCount">0</strong></div>
+                    <div><span>文件缺失</span><strong id="dataMissingCount">0</strong></div>
+                    <div><span>完整分类</span><strong id="dataClassifiedCount">0</strong></div>
+                  </div>
+                  <div class="path-block">
+                    <span>数据索引位置</span>
+                    <div class="path-line"><code id="dataPath">读取中…</code><button type="button" class="icon-button tiny" id="copyDataPath" title="复制路径"><span data-icon="copy"></span></button></div>
+                    <p>备份此目录中的 courseware-library.json，即可保留课件分类与备注；移动课件原文件后可重新导入。</p>
+                  </div>
+                </section>
+
+                <section class="data-card action-card">
+                  <div class="data-card-head"><div><span class="panel-kicker">BACKUP & EXPORT</span><h3>备份与导出</h3></div></div>
+                  <div class="action-list">
+                    <button type="button" class="action-row" id="exportCsvButton">
+                      <span class="action-icon blue" data-icon="sheet"></span>
+                      <span class="action-copy"><strong>导出课件清单</strong><small>生成 CSV 表格，可用 Excel 打开与归档</small></span>
+                      <span class="action-arrow" data-icon="arrowRight"></span>
+                    </button>
+                    <button type="button" class="action-row" id="exportJsonButton">
+                      <span class="action-icon aqua" data-icon="download"></span>
+                      <span class="action-copy"><strong>导出数据备份</strong><small>保存分类、备注与文件索引，不上传任何内容</small></span>
+                      <span class="action-arrow" data-icon="arrowRight"></span>
+                    </button>
+                    <button type="button" class="action-row" id="importJsonButton">
+                      <span class="action-icon indigo" data-icon="upload"></span>
+                      <span class="action-copy"><strong>从备份恢复</strong><small>恢复课件索引，不会改动或删除本地原文件</small></span>
+                      <span class="action-arrow" data-icon="arrowRight"></span>
+                    </button>
+                  </div>
+                  <div class="data-divider"></div>
+                  <div class="action-list compact">
+                    <button type="button" class="action-row" id="clearDemoButtonData">
+                      <span class="action-icon sky" data-icon="sparkles"></span>
+                      <span class="action-copy"><strong>清除示例数据</strong><small id="clearDemoHint">移除所有带「示例」标记的记录</small></span>
+                      <span class="action-arrow" data-icon="arrowRight"></span>
+                    </button>
+                    <button type="button" class="action-row danger" id="clearAllButton">
+                      <span class="action-icon danger" data-icon="trash"></span>
+                      <span class="action-copy"><strong>清空课件库</strong><small>仅移除索引，不会删除本地原文件</small></span>
+                      <span class="action-arrow" data-icon="arrowRight"></span>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="data-card info-card">
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.2.0</span></div>
+                  <div class="about-brand">
+                    <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
+                    <div><strong>枣庄八中高中课件管理系统</strong><span>本地课件资源整理工具</span></div>
+                  </div>
+                  <ul class="about-list">
+                    <li><span data-icon="check"></span>覆盖九大学科、三个年级、必修与选择性必修教材</li>
+                    <li><span data-icon="check"></span>引用本机文件，不复制原件、不占用双份空间</li>
+                    <li><span data-icon="check"></span>数据与文件均留在本机，不上传云端</li>
+                  </ul>
+                  <div class="about-foot"><span>枣庄市第八中学 · 教学信息化中心</span><button type="button" class="text-button small" id="openDataDirButton">数据目录</button></div>
+                </section>
+              </div>
+            </section>
+          </div>
+        </main>
+        <footer class="app-statusbar" aria-label="制作团队与使用说明">
+          <div class="statusbar-local"><span class="statusbar-dot"></span>本地离线运行 · 数据不上传</div>
+          <div class="statusbar-credits">
+            <img class="statusbar-badge" src="../assets/school-badge.png" alt="">
+            <span>开发者：陈凯阳</span>
+            <i></i>
+            <span>技术支持：孙浩翔</span>
+            <i></i>
+            <span>关键词提供：桑晨皓、任泽昱</span>
+            <i></i>
+            <span>使用 AI：Deepseek-V4.1-Flash</span>
+            <i></i>
+            <button type="button" class="statusbar-link" data-open-help>使用说明</button>
+            <a class="statusbar-email" href="mailto:ba4iitqrz@163.com" data-email="ba4iitqrz@163.com" title="点击联系开发者">开发者邮箱：ba4iitqrz@163.com</a>
+            <span class="github-badge" title="该软件已在 GitHub 开源" aria-label="该软件已在 GitHub 开源">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+              <span>该软件已在 GitHub 开源</span>
+            </span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <div class="drop-overlay" id="dropOverlay" hidden>
+    <div class="drop-box"><span class="drop-icon" data-icon="upload"></span><strong>松开即可导入课件</strong><p>支持文件与文件夹，原件保留在原位置</p></div>
+  </div>
+
+  <div class="drawer-overlay" id="drawerOverlay" hidden>
+    <aside class="detail-drawer" id="detailDrawer" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <header class="drawer-header">
+        <div class="drawer-title-block">
+          <span class="drawer-kicker">COURSEWARE DETAIL</span>
+          <h2 id="detailTitle">课件详情</h2>
+        </div>
+        <button type="button" class="icon-button" id="closeDrawerButton" aria-label="关闭详情"><span data-icon="close"></span></button>
+      </header>
+      <div class="drawer-scroll" id="drawerContent"></div>
+      <footer class="drawer-footer" id="drawerFooter"></footer>
+    </aside>
+  </div>
+
+  <div class="modal-layer" id="modalLayer" hidden></div>
+  <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
+
+  <script src="catalog.js"></script>
+  <script src="icons.js"></script>
+  <script src="detect.js"></script>
+  <script src="mock.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
