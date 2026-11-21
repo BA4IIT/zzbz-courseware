@@ -4,6 +4,8 @@
 
 所有课件原件保留在本机原路径，软件只保存索引、分类和备注，不上传云端。
 
+GitHub 仓库：<https://github.com/BA4IIT/zzbz-courseware>
+
 ![系统首页](screenshots/final-library.png)
 
 ## 功能概览
@@ -27,16 +29,14 @@
 
 ![批量下载](screenshots/final-batch-download.png)
 
-## 安装包
+## 下载安装
 
-**安装包不提交到 Git 仓库**（约 118 MB，超过 GitHub 单文件 100 MB 限制），请发布到 GitHub Releases：
+最新安装包与使用说明见 **[Releases](https://github.com/BA4IIT/zzbz-courseware/releases/latest)**：
 
-1. 打开仓库的 **Releases → Draft a new release**；
-2. Tag 选择 `v1.2.0`，标题填写「v1.2.0」；
-3. 上传 `枣庄八中高中课件管理系统-1.2.0-安装包.exe` 和 `使用说明.txt`；
-4. 点击 **Publish release**。
+- 安装包：`zzbz-courseware-1.2.0-setup.exe`
+- 使用说明：`usage.txt`
 
-安装程序支持自选安装目录，并在安装完成后创建桌面和开始菜单快捷方式。
+安装包约 119 MB，因超过 GitHub 单文件 100 MB 限制，作为 Release 附件发布，不进入 Git 历史。安装程序支持自选安装目录，并在安装完成后创建桌面和开始菜单快捷方式。
 
 ### 运行环境
 
