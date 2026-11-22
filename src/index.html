@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -64,6 +64,20 @@
             <button type="button" class="nav-item" data-page="data">
               <span class="nav-icon" data-icon="database"></span>
               <span class="nav-text">数据管理</span>
+            </button>
+          </nav>
+
+          <nav class="nav-group" aria-label="学习工具">
+            <div class="nav-label">学习工具 <span>STUDY TOOLS</span></div>
+            <button type="button" class="nav-item" data-page="vocab">
+              <span class="nav-icon" data-icon="languages"></span>
+              <span class="nav-text">英语 3500</span>
+              <span class="nav-badge soft" id="navVocabCount">0</span>
+            </button>
+            <button type="button" class="nav-item" data-page="questions">
+              <span class="nav-icon" data-icon="chat"></span>
+              <span class="nav-text">学科提问</span>
+              <span class="nav-badge" id="navQuestionCount">0</span>
             </button>
           </nav>
 
@@ -209,6 +223,7 @@
                     <button type="button" class="btn btn-soft" data-action="batch-entry" title="批量录入多份课件文件"><span data-icon="sheet"></span>批量录入</button>
                     <button type="button" class="btn btn-soft" data-action="batch-download" title="将选中课件打包成 ZIP 下载保存"><span data-icon="download"></span>批量下载</button>
                     <button type="button" class="btn btn-ghost" data-action="batch-save" title="将选中课件另存到本机文件夹"><span data-icon="folder"></span>批量另存</button>
+                    <button type="button" class="btn btn-ghost batch-delete-button" data-action="batch-delete" title="批量移除课件库记录，不会删除原文件"><span data-icon="trash"></span>批量删除</button>
                     <button type="button" class="btn btn-soft" data-action="import"><span data-icon="plus"></span>添加课件</button>
                   </div>
                 </div>
@@ -327,6 +342,119 @@
               </div>
             </section>
 
+            <!-- 英语 3500 词汇 -->
+            <section class="page-panel" id="page-vocab" data-panel="vocab" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> ENGLISH 3500 · WORD LOOKUP</div>
+                  <h1>高中英语 3500 词</h1>
+                  <p>离线词库，支持英文单词、中文释义和音标查询；上课前查一个词，马上看到音标与释义。</p>
+                </div>
+                <div class="vocab-head-badge">
+                  <strong id="vocabTotalBadge">0</strong>
+                  <span>词条 · 本地收录</span>
+                </div>
+              </div>
+
+              <div class="vocab-hero">
+                <div class="vocab-hero-copy">
+                  <span class="panel-kicker">WORD LOOKUP</span>
+                  <h2>查一个词，<span>马上看到。</span></h2>
+                  <p>输入英文单词、中文释义或音标片段即可查询。词库来自本机 CSV，查询过程不联网。</p>
+                </div>
+                <div class="vocab-search-card">
+                  <div class="vocab-search-line">
+                    <span class="vocab-search-icon" data-icon="search"></span>
+                    <input id="vocabSearch" type="search" autocomplete="off" spellcheck="false" placeholder="例如：abandon / 放弃 / [əˈbændən]" aria-label="查询英语单词">
+                    <button type="button" class="icon-button tiny" id="vocabSearchClear" data-vocab-clear title="清空查询" aria-label="清空查询"><span data-icon="close"></span></button>
+                  </div>
+                  <div class="vocab-search-hint"><span data-icon="sparkles"></span>支持模糊匹配，也可以直接输入中文释义</div>
+                </div>
+              </div>
+
+              <div class="vocab-toolbar">
+                <div class="vocab-alphabet" id="vocabAlphabet" role="group" aria-label="按首字母筛选"></div>
+                <div class="vocab-result-info"><strong id="vocabResultCount">0</strong><span>个结果</span></div>
+              </div>
+              <div class="vocab-grid" id="vocabResults"></div>
+              <div class="vocab-more-wrap" id="vocabMoreWrap" hidden>
+                <button type="button" class="btn btn-light" id="vocabMoreButton">显示更多单词</button>
+              </div>
+            </section>
+
+            <!-- 学科提问 -->
+            <section class="page-panel" id="page-questions" data-panel="questions" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> CLASS QUESTIONS · TEACHING QUEUE</div>
+                  <h1>学科提问</h1>
+                  <p>课代表把需要老师讲的题发布在这里，同学投票或直接填写票数，老师按票数优先讲题。</p>
+                </div>
+                <div class="question-stats">
+                  <div><strong id="questionOpenCount">0</strong><span>待讲解</span></div>
+                  <div><strong id="questionDoneCount">0</strong><span>已讲解</span></div>
+                  <div><strong id="questionVoteTotal">0</strong><span>总票数</span></div>
+                </div>
+              </div>
+
+              <div class="question-layout">
+                <section class="question-card question-compose">
+                  <div class="panel-head">
+                    <div><span class="panel-kicker">NEW QUESTION</span><h3>发布需要讲的题</h3></div>
+                    <span class="question-compose-mark" data-icon="edit"></span>
+                  </div>
+                  <form id="questionForm" class="question-form" autocomplete="off">
+                    <label class="question-field">
+                      <span>学科</span>
+                      <select id="questionSubject" required></select>
+                    </label>
+                    <label class="question-field">
+                      <span>题目 / 题号</span>
+                      <input id="questionTitle" type="text" maxlength="120" required placeholder="例如：必修一 Unit 3 阅读第 2 题">
+                    </label>
+                    <label class="question-field">
+                      <span>问题说明 <em>选填</em></span>
+                      <textarea id="questionDetail" rows="3" maxlength="800" placeholder="需要老师重点讲什么？例如：第三问的推理过程没听懂。"></textarea>
+                    </label>
+                    <label class="question-field question-votes-field">
+                      <span>当前票数</span>
+                      <input id="questionVotes" type="number" min="0" max="9999" step="1" value="0" inputmode="numeric">
+                      <small>课代表可先手动填写，之后同学也可以点「投票 +1」。</small>
+                    </label>
+                    <button type="submit" class="btn btn-primary question-submit"><span data-icon="plus"></span>发布问题</button>
+                  </form>
+                  <p class="question-form-hint">题目由课代表自行建立。只在本机保存，不会上传云端。</p>
+                </section>
+
+                <section class="question-card question-feed">
+                  <div class="question-feed-head">
+                    <div>
+                      <span class="panel-kicker">TEACHING QUEUE</span>
+                      <h3 id="questionFeedTitle">待讲解问题</h3>
+                    </div>
+                    <div class="question-status-tabs" id="questionStatusTabs">
+                      <button type="button" class="is-active" data-question-status="open">待讲解</button>
+                      <button type="button" data-question-status="done">已讲解</button>
+                      <button type="button" data-question-status="all">全部</button>
+                    </div>
+                  </div>
+                  <div class="question-filters">
+                    <select id="questionSubjectFilter" aria-label="按学科筛选"></select>
+                    <select id="questionSort" aria-label="问题排序">
+                      <option value="votes">票数优先</option>
+                      <option value="newest">最新发布</option>
+                      <option value="oldest">最早发布</option>
+                    </select>
+                    <label class="question-search" for="questionSearch">
+                      <span data-icon="search"></span>
+                      <input id="questionSearch" type="search" autocomplete="off" placeholder="搜索题目或说明…">
+                    </label>
+                  </div>
+                  <div class="question-list" id="questionList"></div>
+                </section>
+              </div>
+            </section>
+
             <!-- 数据管理 -->
             <section class="page-panel" id="page-data" data-panel="data" hidden>
               <div class="page-heading">
@@ -395,7 +523,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.2.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.3.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中高中课件管理系统</strong><span>本地课件资源整理工具</span></div>
@@ -457,6 +585,7 @@
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
 
   <script src="catalog.js"></script>
+  <script src="words.js"></script>
   <script src="icons.js"></script>
   <script src="detect.js"></script>
   <script src="mock.js"></script>

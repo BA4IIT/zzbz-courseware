@@ -109,7 +109,7 @@
       return {
         ok: true,
         name: '枣庄八中高中课件管理系统',
-        version: '1.2.0',
+        version: '1.3.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',

@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } = require('electron');
 const archiver = require('archiver');
@@ -39,7 +39,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中高中课件管理系统';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const isDev = process.argv.includes('--dev');
 const captureArg = process.argv.find((arg) => arg.startsWith('--capture='));
 const testExportRoot = process.env.ZZBZ_TEST_EXPORT_DIR || '';
@@ -311,12 +311,31 @@ function normalizeItem(raw) {
   };
 }
 
+function normalizeQuestion(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = normalizeString(raw.id, 80);
+  const title = normalizeString(raw.title, 200);
+  if (!id || !title) return null;
+  return {
+    id,
+    subjectId: normalizeString(raw.subjectId, 40),
+    title,
+    detail: normalizeString(raw.detail, 2000),
+    votes: Math.max(0, Math.min(9999, Math.floor(Number(raw.votes) || 0))),
+    status: raw.status === 'done' ? 'done' : 'open',
+    createdAt: normalizeString(raw.createdAt, 40) || new Date().toISOString(),
+    updatedAt: normalizeString(raw.updatedAt, 40) || new Date().toISOString()
+  };
+}
+
 function normalizeLibrary(payload) {
   const rawItems = payload && Array.isArray(payload.items) ? payload.items : [];
   const items = rawItems.map(normalizeItem).filter(Boolean).slice(0, 20000);
+  const rawQuestions = payload && Array.isArray(payload.questions) ? payload.questions : [];
+  const questions = rawQuestions.map(normalizeQuestion).filter(Boolean).slice(0, 5000);
   const rawSettings = payload && payload.settings && typeof payload.settings === 'object' ? payload.settings : {};
   return {
-    version: 1,
+    version: 2,
     school: '枣庄市第八中学',
     updatedAt: new Date().toISOString(),
     settings: {
@@ -325,7 +344,8 @@ function normalizeLibrary(payload) {
       lastSubject: normalizeString(rawSettings.lastSubject, 40),
       theme: 'light-blue'
     },
-    items
+    items,
+    questions
   };
 }
 
@@ -336,6 +356,7 @@ async function loadLibrary() {
     return {
       ok: true,
       items: Array.isArray(parsed.items) ? parsed.items.map(normalizeItem).filter(Boolean) : [],
+      questions: Array.isArray(parsed.questions) ? parsed.questions.map(normalizeQuestion).filter(Boolean) : [],
       settings: parsed.settings || {},
       updatedAt: parsed.updatedAt || '',
       dataDir: getDataDir(),
@@ -346,6 +367,7 @@ async function loadLibrary() {
       return {
         ok: true,
         items: [],
+        questions: [],
         settings: {},
         updatedAt: '',
         dataDir: getDataDir(),
@@ -362,6 +384,7 @@ async function loadLibrary() {
     return {
       ok: true,
       items: [],
+      questions: [],
       settings: {},
       updatedAt: '',
       dataDir: getDataDir(),
@@ -380,7 +403,12 @@ function registerIpc() {
     const text = JSON.stringify(library, null, 2);
     saveChain = saveChain.then(() => atomicWrite(getLibraryPath(), text));
     await saveChain;
-    return { ok: true, updatedAt: library.updatedAt, count: library.items.length };
+    return {
+      ok: true,
+      updatedAt: library.updatedAt,
+      count: library.items.length,
+      questionCount: library.questions.length
+    };
   });
 
   ipcMain.handle('dialog:pick-files', async () => {

@@ -18,7 +18,10 @@ GitHub 仓库：<https://github.com/BA4IIT/zzbz-courseware>
   - 根据文件夹层级和文件名自动识别学科、教材、章节、课程分类；
   - 单份、多份文件批量录入，支持直接粘贴本机文件路径；
   - 单个「另存为」、批量另存按分类自动建目录；
-  - 批量下载：将多份课件打包成一个 ZIP 文件保存到本机。
+  - 批量下载：将多份课件打包成一个 ZIP 文件保存到本机；
+  - 批量删除：按当前筛选结果多选移除索引，不删除课件原件。
+- **英语 3500 词汇**：离线查询英文单词、音标和中文释义，支持中文/英文模糊搜索与 A—Z 首字母筛选；由 `wordlib（main）.csv` 整理出 3384 个词条。
+- **学科提问**：课代表自行发布待讲题目并填写票数，同学可投票 +1，支持按票数排序、按学科筛选、标记已讲解。
 - **检索与整理**：按年级、学科、教材、章节、课程分类组合筛选；支持全文搜索、收藏、最近使用、标签和教学备注。
 - **课件预览**：PDF、图片、视频、音频内嵌预览；Office 文件调用本机 Office/WPS 打开。
 - **数据安全**：文件仅引用本地路径，不复制、不修改、不删除原文件；完全离线运行。
@@ -29,11 +32,17 @@ GitHub 仓库：<https://github.com/BA4IIT/zzbz-courseware>
 
 ![批量下载](screenshots/final-batch-download.png)
 
+![批量删除](screenshots/final-batch-delete.png)
+
+![英语 3500 词汇](screenshots/final-vocab.png)
+
+![学科提问](screenshots/final-questions.png)
+
 ## 下载安装
 
 最新安装包与使用说明见 **[Releases](https://github.com/BA4IIT/zzbz-courseware/releases/latest)**：
 
-- 安装包：`zzbz-courseware-1.2.0-setup.exe`
+- 安装包：`zzbz-courseware-1.3.0-setup.exe`
 - 使用说明：`usage.txt`
 
 安装包约 119 MB，因超过 GitHub 单文件 100 MB 限制，作为 Release 附件发布，不进入 Git 历史。安装程序支持自选安装目录，并在安装完成后创建桌面和开始菜单快捷方式。
@@ -65,6 +74,7 @@ npm run dist
 │  ├─ index.html           界面结构
 │  ├─ styles.css           浅蓝色视觉样式
 │  ├─ catalog.js           九大学科/教材/章节数据
+│  ├─ words.js             高中英语 3500 词汇离线数据
 │  ├─ icons.js             内联 SVG 图标
 │  ├─ detect.js            文件名与文件夹自动分类
 │  ├─ app.js               界面逻辑
@@ -77,7 +87,7 @@ npm run dist
 
 ## 本地数据
 
-- 课件索引保存在程序目录的 `data/courseware-library.json`；如果安装目录不可写，会自动使用 Windows 用户数据目录。
+- 课件索引和学科提问保存在程序目录的 `data/courseware-library.json`；如果安装目录不可写，会自动使用 Windows 用户数据目录。
 - `data/.runtime` 为运行缓存，不需提交到 Git。
 - 建议定期在「数据管理」中导出 JSON 备份，同时保留课件原文件夹。
 

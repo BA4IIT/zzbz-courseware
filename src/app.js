@@ -4,6 +4,7 @@
   const DATA = window.ZZBZ_DATA;
   const DETECT = window.ZZBZ_DETECT;
   const ICONS = window.ZZBZ_ICONS;
+  const WORDS = Array.isArray(window.ZZBZ_WORDS) ? window.ZZBZ_WORDS : [];
   const api = window.zzbz;
   const icon = (name) => ICONS.icon(name);
   const $ = (selector, root) => (root || document).querySelector(selector);
@@ -34,6 +35,8 @@
     library: '教学资源中心',
     catalog: '教材目录',
     types: '课程分类',
+    vocab: '英语 3500 词汇',
+    questions: '学科提问',
     data: '数据管理'
   };
 
@@ -234,6 +237,19 @@
     batchSaveSelected: new Set(),
     batchSaveBusy: false,
     batchSaveMode: 'folder',
+    batchDeleteItems: [],
+    batchDeleteSelected: new Set(),
+    batchDeleteBusy: false,
+    questions: [],
+    questionSubjectId: '',
+    questionStatus: 'open',
+    questionSort: 'votes',
+    questionSearch: '',
+    questionFormSubject: 'english',
+    questionVoteEditId: '',
+    vocabQuery: '',
+    vocabLetter: '',
+    vocabLimit: 60,
     modal: null,
     confirmCallback: null,
     dragDepth: 0
@@ -246,6 +262,9 @@
     navCount: $('#navCount'),
     navCatalogCount: $('#navCatalogCount'),
     navTypesCount: $('#navTypesCount'),
+    navVocabCount: $('#navVocabCount'),
+    navQuestionCount: $('#navQuestionCount'),
+    searchBox: $('.search-box'),
     favCount: $('#favCount'),
     incompleteCount: $('#incompleteCount'),
     storageMini: $('#storageMini'),
@@ -505,8 +524,11 @@
     ui.navCount.textContent = String(state.items.length);
     ui.navCatalogCount.textContent = String(DATA.stats.books);
     ui.navTypesCount.textContent = String(DATA.stats.types);
+    if (ui.navVocabCount) ui.navVocabCount.textContent = String(WORDS.length);
+    if (ui.navQuestionCount) ui.navQuestionCount.textContent = String(state.questions.filter((q) => q.status !== 'done').length);
     ui.favCount.textContent = String(state.items.filter((item) => item.favorite).length);
     ui.incompleteCount.textContent = String(state.items.filter((item) => !isComplete(item)).length);
+    if (ui.searchBox) ui.searchBox.hidden = state.page === 'vocab' || state.page === 'questions';
 
     ui.navItems.forEach((button) => {
       button.classList.toggle('is-active', button.dataset.page === state.page);
@@ -1005,11 +1027,314 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.2.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '1.3.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
     if (clearDemoButton) clearDemoButton.disabled = demoCount === 0;
+  }
+
+  /* ---------------- 英语 3500 词汇 ---------------- */
+
+  function vocabLetterOf(word) {
+    const first = String(word || '').trim().charAt(0).toUpperCase();
+    return /^[A-Z]$/.test(first) ? first : '#';
+  }
+
+  function filteredVocab() {
+    const query = state.vocabQuery.trim().toLowerCase();
+    const letter = state.vocabLetter;
+    let list = WORDS;
+    if (letter) list = list.filter((entry) => vocabLetterOf(entry.w) === letter);
+    if (query) {
+      list = list.filter((entry) => (
+        String(entry.w || '').toLowerCase().includes(query)
+        || String(entry.m || '').toLowerCase().includes(query)
+        || String(entry.p || '').toLowerCase().includes(query)
+      ));
+    }
+    return list.slice().sort((a, b) => {
+      const aw = String(a.w || '').toLowerCase();
+      const bw = String(b.w || '').toLowerCase();
+      if (query) {
+        const ap = aw.startsWith(query) ? 0 : 1;
+        const bp = bw.startsWith(query) ? 0 : 1;
+        if (ap !== bp) return ap - bp;
+      }
+      return aw.localeCompare(bw, 'en');
+    });
+  }
+
+  function renderVocabResults() {
+    const list = filteredVocab();
+    const visible = list.slice(0, state.vocabLimit);
+    const countNode = $('#vocabResultCount');
+    if (countNode) countNode.textContent = String(list.length);
+    const results = $('#vocabResults');
+    if (!results) return;
+    if (!visible.length) {
+      results.innerHTML = `<div class="vocab-empty">${icon('search')}<strong>没有找到相关词汇</strong><p>换一个英文单词或中文释义试试，也可以点击上方字母浏览。</p></div>`;
+    } else {
+      results.innerHTML = visible.map((entry) => `<article class="vocab-card">
+        <span class="vocab-initial">${esc(vocabLetterOf(entry.w))}</span>
+        <div class="vocab-card-head">
+          <strong class="vocab-word">${esc(entry.w)}</strong>
+          ${entry.p ? `<span class="vocab-phonetic">${esc(entry.p)}</span>` : ''}
+        </div>
+        <p class="vocab-meaning">${esc(entry.m || '暂无释义')}</p>
+      </article>`).join('');
+    }
+    const more = $('#vocabMoreWrap');
+    if (more) more.hidden = list.length <= state.vocabLimit;
+  }
+
+  function renderVocab() {
+    const totalBadge = $('#vocabTotalBadge');
+    if (totalBadge) totalBadge.textContent = String(WORDS.length);
+    const alphabet = $('#vocabAlphabet');
+    if (alphabet) {
+      const letters = ['', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'];
+      alphabet.innerHTML = letters.map((letter) => (
+        `<button type="button" class="vocab-letter${state.vocabLetter === letter ? ' is-active' : ''}" data-vocab-letter="${letter}" title="${letter ? `首字母 ${letter}` : '显示全部'}">${letter || '全部'}</button>`
+      )).join('');
+    }
+    const input = $('#vocabSearch');
+    if (input) input.value = state.vocabQuery;
+    renderVocabResults();
+  }
+
+  function setVocabQuery(value) {
+    state.vocabQuery = String(value || '');
+    state.vocabLimit = 60;
+    const input = $('#vocabSearch');
+    if (input && input.value !== state.vocabQuery) input.value = state.vocabQuery;
+    renderVocabResults();
+  }
+
+  /* ---------------- 学科提问 ---------------- */
+
+  function questionSubjectMeta(question) {
+    return DATA.subjectById[question.subjectId] || null;
+  }
+
+  function filteredQuestions() {
+    const query = state.questionSearch.trim().toLowerCase();
+    let list = state.questions.slice();
+    if (state.questionStatus !== 'all') list = list.filter((question) => question.status === state.questionStatus);
+    if (state.questionSubjectId) list = list.filter((question) => question.subjectId === state.questionSubjectId);
+    if (query) {
+      list = list.filter((question) => (
+        String(question.title || '').toLowerCase().includes(query)
+        || String(question.detail || '').toLowerCase().includes(query)
+      ));
+    }
+    return list.sort((a, b) => {
+      if (state.questionSort === 'newest') return String(b.createdAt).localeCompare(String(a.createdAt));
+      if (state.questionSort === 'oldest') return String(a.createdAt).localeCompare(String(b.createdAt));
+      if ((b.votes || 0) !== (a.votes || 0)) return (b.votes || 0) - (a.votes || 0);
+      return String(b.createdAt).localeCompare(String(a.createdAt));
+    });
+  }
+
+  function renderQuestionStats() {
+    const open = state.questions.filter((question) => question.status !== 'done').length;
+    const done = state.questions.filter((question) => question.status === 'done').length;
+    const votes = state.questions.reduce((sum, question) => sum + (Number(question.votes) || 0), 0);
+    const openNode = $('#questionOpenCount');
+    const doneNode = $('#questionDoneCount');
+    const votesNode = $('#questionVoteTotal');
+    if (openNode) openNode.textContent = String(open);
+    if (doneNode) doneNode.textContent = String(done);
+    if (votesNode) votesNode.textContent = String(votes);
+  }
+
+  function renderQuestionsList() {
+    renderQuestionStats();
+    const feedTitle = $('#questionFeedTitle');
+    if (feedTitle) {
+      feedTitle.textContent = state.questionStatus === 'done' ? '已讲解问题' : state.questionStatus === 'all' ? '全部问题' : '待讲解问题';
+    }
+    $$('#questionStatusTabs [data-question-status]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.questionStatus === state.questionStatus);
+    });
+    const list = filteredQuestions();
+    const container = $('#questionList');
+    if (!container) return;
+    if (!list.length) {
+      container.innerHTML = `<div class="question-empty">${icon('chat')}<strong>${state.questionStatus === 'done' ? '还没有已讲解的问题' : '还没有待讲解的问题'}</strong><p>课代表可以在左侧发布题目，同学可以点「投票 +1」或由课代表填写票数。</p></div>`;
+      return;
+    }
+    container.innerHTML = list.map((question) => {
+      const subject = questionSubjectMeta(question);
+      const isDone = question.status === 'done';
+      const editingVotes = state.questionVoteEditId === question.id;
+      const voteBox = editingVotes ? `<div class="question-vote-editor">
+          <input type="number" min="0" max="9999" value="${Number(question.votes) || 0}" data-question-vote-input="${attr(question.id)}" aria-label="修改票数">
+          <button type="button" data-question-save-votes="${attr(question.id)}">保存</button>
+          <button type="button" data-question-cancel-votes="${attr(question.id)}">取消</button>
+        </div>` : `<strong class="question-vote-number">${Number(question.votes) || 0}</strong><span>票</span>
+        <button type="button" class="question-vote-btn" data-question-vote="${attr(question.id)}">投票 +1</button>
+        <button type="button" class="question-vote-edit" data-question-edit-votes="${attr(question.id)}">改票数</button>`;
+      return `<article class="question-item${isDone ? ' is-done' : ''}" data-question-id="${attr(question.id)}">
+        <div class="question-vote-box">${voteBox}</div>
+        <div class="question-main">
+          <div class="question-meta">
+            ${subject ? `<span class="question-subject" style="--subject-color:${subject.color}">${esc(subject.name)}</span>` : ''}
+            <span class="question-status${isDone ? ' is-done' : ''}">${isDone ? '已讲解' : '待讲解'}</span>
+            <span class="question-time">${esc(relativeTime(question.createdAt))}</span>
+          </div>
+          <h3 class="question-title">${esc(question.title)}</h3>
+          ${question.detail ? `<p class="question-detail">${esc(question.detail)}</p>` : ''}
+          <div class="question-footer">
+            <span class="question-time">更新于 ${esc(formatDateTime(question.updatedAt) || '—')}</span>
+            <div class="question-actions">
+              <button type="button" class="question-action" data-question-done="${attr(question.id)}">${isDone ? '重新打开' : '标记已讲解'}</button>
+              <button type="button" class="question-action is-danger" data-question-delete="${attr(question.id)}">删除</button>
+            </div>
+          </div>
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  function renderQuestions() {
+    if (!DATA.subjectById[state.questionFormSubject]) state.questionFormSubject = 'english';
+    const subjectSelect = $('#questionSubject');
+    if (subjectSelect) {
+      subjectSelect.innerHTML = DATA.catalog.map((subject) => option(subject.id, subject.name, state.questionFormSubject === subject.id)).join('');
+    }
+    const filterSelect = $('#questionSubjectFilter');
+    if (filterSelect) {
+      filterSelect.innerHTML = option('', '全部学科', !state.questionSubjectId)
+        + DATA.catalog.map((subject) => option(subject.id, subject.name, state.questionSubjectId === subject.id)).join('');
+    }
+    const sortSelect = $('#questionSort');
+    if (sortSelect) sortSelect.value = state.questionSort;
+    const searchInput = $('#questionSearch');
+    if (searchInput) searchInput.value = state.questionSearch;
+    renderQuestionsList();
+  }
+
+  async function createQuestionFromForm() {
+    const titleInput = $('#questionTitle');
+    const detailInput = $('#questionDetail');
+    const votesInput = $('#questionVotes');
+    const subjectSelect = $('#questionSubject');
+    const title = String(titleInput?.value || '').trim();
+    if (!title) {
+      titleInput?.focus();
+      showToast('请填写题目或题号。', { type: 'warn' });
+      return;
+    }
+    const subjectId = subjectSelect?.value || state.questionFormSubject || 'english';
+    if (!DATA.subjectById[subjectId]) {
+      showToast('请选择学科。', { type: 'warn' });
+      return;
+    }
+    const question = {
+      id: uniqueId('question'),
+      subjectId,
+      title: title.slice(0, 200),
+      detail: String(detailInput?.value || '').trim().slice(0, 800),
+      votes: Math.max(0, Math.min(9999, Math.floor(Number(votesInput?.value) || 0))),
+      status: 'open',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const snapshot = state.questions.slice();
+    state.questions.unshift(question);
+    state.questionStatus = 'open';
+    state.questionSubjectId = '';
+    const ok = await persistLibrary();
+    if (!ok) {
+      state.questions = snapshot;
+      renderQuestionsList();
+      return;
+    }
+    if (titleInput) titleInput.value = '';
+    if (detailInput) detailInput.value = '';
+    if (votesInput) votesInput.value = '0';
+    if (subjectSelect) subjectSelect.value = state.questionFormSubject;
+    renderChrome();
+    renderQuestionStats();
+    renderQuestionsList();
+    showToast(`问题已发布，当前 ${question.votes} 票。`, { type: 'success', title: '已加入待讲解' });
+  }
+
+  async function updateQuestionVotes(question, votes) {
+    const value = Math.max(0, Math.min(9999, Math.floor(Number(votes) || 0)));
+    question.votes = value;
+    question.updatedAt = new Date().toISOString();
+    state.questionVoteEditId = '';
+    renderQuestionsList();
+    await persistLibrary();
+  }
+
+  function askDeleteQuestion(question) {
+    const subject = questionSubjectMeta(question);
+    openConfirm({
+      title: '删除这个问题？',
+      message: `将删除「${esc(question.title)}」这条${subject ? ` ${esc(subject.name)}` : ''}提问记录，不会影响课件文件。`,
+      confirmText: '删除',
+      danger: true,
+      onConfirm: async () => {
+        state.questions = state.questions.filter((entry) => entry.id !== question.id);
+        if (state.questionVoteEditId === question.id) state.questionVoteEditId = '';
+        await persistLibrary();
+        renderChrome();
+        renderQuestionsList();
+      }
+    });
+  }
+
+  function bindQuestionEvents() {
+    const form = $('#questionForm');
+    if (form) {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        createQuestionFromForm();
+      });
+    }
+    const subject = $('#questionSubject');
+    if (subject) {
+      subject.addEventListener('change', () => {
+        state.questionFormSubject = subject.value;
+      });
+    }
+    const subjectFilter = $('#questionSubjectFilter');
+    if (subjectFilter) {
+      subjectFilter.addEventListener('change', () => {
+        state.questionSubjectId = subjectFilter.value;
+        renderQuestionsList();
+      });
+    }
+    const sort = $('#questionSort');
+    if (sort) {
+      sort.addEventListener('change', () => {
+        state.questionSort = sort.value;
+        renderQuestionsList();
+      });
+    }
+    const search = $('#questionSearch');
+    if (search) {
+      search.addEventListener('input', () => {
+        state.questionSearch = search.value;
+        renderQuestionsList();
+      });
+    }
+    const vocabSearch = $('#vocabSearch');
+    if (vocabSearch) {
+      vocabSearch.addEventListener('input', () => {
+        setVocabQuery(vocabSearch.value);
+      });
+    }
+    const vocabMore = $('#vocabMoreButton');
+    if (vocabMore) {
+      vocabMore.addEventListener('click', () => {
+        state.vocabLimit += 60;
+        renderVocabResults();
+      });
+    }
   }
 
   function renderAll() {
@@ -1017,6 +1342,8 @@
     renderLibrary();
     if (state.page === 'catalog') renderCatalog();
     if (state.page === 'types') renderTypes();
+    if (state.page === 'vocab') renderVocab();
+    if (state.page === 'questions') renderQuestions();
     if (state.page === 'data') renderData();
   }
 
@@ -1407,6 +1734,119 @@
       batchSaveSelectionSummary();
       showToast(error?.message || `${isZip ? '批量下载' : '批量另存'}失败`, { type: 'error' });
     }
+  }
+
+  function batchDeleteSelectionSummary() {
+    const items = state.batchDeleteItems;
+    const selected = items.filter((item) => state.batchDeleteSelected.has(item.id));
+    const selectedNode = $('#batchDeleteStepSummary');
+    if (selectedNode) selectedNode.textContent = `已选 ${selected.length} / ${items.length} 份`;
+    const button = $('#batchDeleteConfirmButton');
+    if (button) {
+      button.disabled = state.batchDeleteBusy || selected.length === 0;
+      button.innerHTML = state.batchDeleteBusy
+        ? '<span class="spinner"></span>正在移除…'
+        : `删除选中${selected.length ? ` ${selected.length} 份` : ''}`;
+    }
+    const all = $('#batchDeleteSelectAll');
+    if (all) {
+      all.checked = selected.length === items.length && items.length > 0;
+      all.indeterminate = selected.length > 0 && selected.length < items.length;
+    }
+  }
+
+  function renderBatchDeleteModal() {
+    const items = state.batchDeleteItems;
+    const list = items.map((item) => {
+      const subject = itemSubject(item);
+      const book = itemBook(item);
+      const type = itemType(item);
+      const meta = fileMeta(item.ext);
+      const checked = state.batchDeleteSelected.has(item.id);
+      const missing = isMissing(item);
+      return `<label class="batch-save-item">
+        <input type="checkbox" data-batch-delete-id="${attr(item.id)}" ${checked ? 'checked' : ''}>
+        <span class="batch-save-icon" style="--file-color:${meta.color}">${icon(meta.icon)}</span>
+        <span class="batch-save-file">
+          <span class="batch-save-copy">
+            <strong title="${attr(item.name)}">${esc(item.name)}</strong>
+            <small>${esc(subject ? subject.name : '未分学科')} · ${esc(book ? bookName(book) : '未分教材')}${missing ? ' · 文件缺失' : ''}</small>
+          </span>
+        </span>
+        <span class="batch-save-side"><span>${formatSize(item.size)}</span><strong>${esc(type.name)}</strong></span>
+      </label>`;
+    }).join('');
+    state.batchDeleteBusy = false;
+    ui.modalLayer.innerHTML = `<div class="modal" style="width:760px" role="dialog" aria-modal="true" aria-labelledby="batchDeleteTitle">
+      <header class="modal-header">
+        <span class="modal-icon">${icon('trash')}</span>
+        <div class="modal-heading"><h2 id="batchDeleteTitle">批量删除课件</h2><p>从课件库移除选中的课件记录，可按当前筛选结果集中清理。</p></div>
+        <button type="button" class="icon-button" data-close-modal aria-label="关闭">${icon('close')}</button>
+      </header>
+      <div class="modal-body">
+        <div class="batch-delete-warning">${icon('alert')}只移除课件库中的索引记录，<strong>不会删除电脑中的课件原文件</strong>。删除后可通过重新导入恢复。</div>
+        <div class="batch-save-toolbar">
+          <label class="batch-save-checkall"><input type="checkbox" id="batchDeleteSelectAll">全选当前筛选结果</label>
+          <span id="batchDeleteStepSummary">已选 0 / ${items.length} 份</span>
+        </div>
+        <div class="batch-save-list" id="batchDeleteList">${list || '<div class="batch-empty">' + icon('trash') + '<p>当前筛选结果中没有可删除的课件。</p></div>'}</div>
+      </div>
+      <footer class="modal-footer">
+        <span class="modal-footer-note">${icon('shield')}课件原件仍保留在原位置</span>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn btn-light" data-close-modal>取消</button>
+          <button type="button" class="btn btn-danger" id="batchDeleteConfirmButton" disabled>删除选中</button>
+        </div>
+      </footer>
+    </div>`;
+    ui.modalLayer.hidden = false;
+    batchDeleteSelectionSummary();
+  }
+
+  function openBatchDeleteModal() {
+    if (state.modal === 'import' && (state.importBusy || state.importScanning)) {
+      showToast('请先完成当前的导入/录入操作。', { type: 'warn' });
+      return;
+    }
+    const items = getFilteredItems();
+    if (!items.length) {
+      showToast('当前筛选结果中没有可删除的课件。', { type: 'warn', title: '没有可删除的记录' });
+      return;
+    }
+    state.batchDeleteItems = items;
+    state.batchDeleteSelected = new Set();
+    state.batchDeleteBusy = false;
+    state.modal = 'batch-delete';
+    renderBatchDeleteModal();
+  }
+
+  async function startBatchDelete() {
+    if (state.batchDeleteBusy) return;
+    const selected = state.batchDeleteItems.filter((item) => state.batchDeleteSelected.has(item.id));
+    if (!selected.length) {
+      showToast('请至少选择一份课件。', { type: 'warn' });
+      return;
+    }
+    state.batchDeleteBusy = true;
+    batchDeleteSelectionSummary();
+    const snapshot = state.items.slice();
+    const selectedIds = new Set(selected.map((item) => item.id));
+    state.items = state.items.filter((item) => !selectedIds.has(item.id));
+    selected.forEach((item) => {
+      if (item.filePath) state.missing.delete(item.filePath);
+    });
+    const ok = await persistLibrary();
+    if (!ok) {
+      state.items = snapshot;
+      state.batchDeleteBusy = false;
+      batchDeleteSelectionSummary();
+      return;
+    }
+    state.batchDeleteBusy = false;
+    closeModal();
+    renderChrome();
+    renderLibrary();
+    showToast(`已从课件库移除 ${selected.length} 条记录，原文件未删除。`, { type: 'success', title: '批量删除完成' });
   }
 
   function refreshDetailBookSelect(subjectId, keepBookId) {
@@ -1946,6 +2386,9 @@
     state.batchSaveSelected = new Set();
     state.batchSaveBusy = false;
     state.batchSaveMode = 'folder';
+    state.batchDeleteItems = [];
+    state.batchDeleteSelected = new Set();
+    state.batchDeleteBusy = false;
     ui.modalLayer.hidden = true;
     ui.modalLayer.innerHTML = '';
   }
@@ -2019,9 +2462,15 @@
             <li><strong>批量录入</strong>：在课件库标题右侧点击「批量录入」，可一次选择多个文件、扫描文件夹，或直接粘贴本机文件路径，核对分类后统一保存。</li>
             <li><strong>批量另存</strong>：点击「批量另存」，勾选当前结果中的课件，选择目标文件夹，即可按「学科 / 教材 / 章节」自动分类复制并生成课件清单。</li>
             <li><strong>批量下载</strong>：点击「批量下载」，勾选课件后可打包成一个 ZIP 文件保存，压缩包内同样按分类整理并附带课件清单。</li>
+            <li><strong>批量删除</strong>：点击「批量删除」，勾选当前筛选结果中的记录后删除；只移除索引，不会删除电脑中的课件原文件。</li>
             <li><strong>单个另存</strong>：打开课件详情，点击「另存为」即可把该课件复制到本机任意位置，不影响原文件。</li>
           </ul>
-          <div class="help-tip">建议定期在「数据管理」中导出数据备份。备份只包含索引与分类信息，不包含课件原文件。</div>
+          <h3>学习工具</h3>
+          <ul class="help-list">
+            <li><strong>英语 3500</strong>：在左侧「学习工具 → 英语 3500」中按英文、中文或音标查询，支持 A—Z 首字母浏览。</li>
+            <li><strong>学科提问</strong>：在左侧「学习工具 → 学科提问」中发布待讲题目、填写票数或投票 +1；可按票数排序，讲完后标记已讲解。</li>
+          </ul>
+          <div class="help-tip">建议定期在「数据管理」中导出数据备份。备份包含课件索引、学科提问与分类信息，不包含课件原文件。</div>
           <div class="help-team">
             <img src="../assets/school-badge.png" alt="枣庄八中校徽">
             <div class="help-team-copy">
@@ -2083,6 +2532,7 @@
     try {
       const result = await api.saveLibrary({
         items: state.items,
+        questions: state.questions,
         settings: state.settings
       });
       if (!result || !result.ok) throw new Error(result?.error || '保存失败');
@@ -2144,6 +2594,8 @@
     if (page === 'library') renderLibrary();
     if (page === 'catalog') renderCatalog();
     if (page === 'types') renderTypes();
+    if (page === 'vocab') renderVocab();
+    if (page === 'questions') renderQuestions();
     if (page === 'data') renderData();
     if (!options || options.scroll !== false) ui.mainScroll.scrollTop = 0;
   }
@@ -2247,11 +2699,12 @@
   async function exportJson() {
     const backup = {
       app: '枣庄八中高中课件管理系统',
-      formatVersion: 1,
+      formatVersion: 2,
       school: '枣庄市第八中学',
       exportedAt: new Date().toISOString(),
       settings: { ...state.settings, initialized: true },
-      items: state.items
+      items: state.items,
+      questions: state.questions
     };
     const result = await api.saveText({
       title: '导出课件库数据备份',
@@ -2295,6 +2748,26 @@
     }).filter(Boolean);
   }
 
+  function sanitizeBackupQuestions(questions) {
+    const seen = new Set();
+    return (Array.isArray(questions) ? questions : []).map((question) => {
+      if (!question || typeof question !== 'object' || !question.title) return null;
+      let id = typeof question.id === 'string' && question.id ? question.id : uniqueId('question');
+      if (seen.has(id)) id = uniqueId('question');
+      seen.add(id);
+      return {
+        id,
+        subjectId: typeof question.subjectId === 'string' ? question.subjectId : '',
+        title: String(question.title).slice(0, 200),
+        detail: typeof question.detail === 'string' ? question.detail.slice(0, 800) : '',
+        votes: Math.max(0, Math.min(9999, Math.floor(Number(question.votes) || 0))),
+        status: question.status === 'done' ? 'done' : 'open',
+        createdAt: typeof question.createdAt === 'string' ? question.createdAt : new Date().toISOString(),
+        updatedAt: typeof question.updatedAt === 'string' ? question.updatedAt : new Date().toISOString()
+      };
+    }).filter(Boolean);
+  }
+
   async function importJson() {
     const file = await api.openJson();
     if (!file || file.canceled) return;
@@ -2314,13 +2787,20 @@
       return;
     }
     const backupItems = sanitizeBackupItems(parsed.items);
+    const hasBackupQuestions = Array.isArray(parsed.questions);
+    const backupQuestions = hasBackupQuestions ? sanitizeBackupQuestions(parsed.questions) : state.questions.slice();
+    const questionMessage = hasBackupQuestions
+      ? `备份中的 <strong>${backupQuestions.length}</strong> 条学科提问`
+      : `当前 <strong>${backupQuestions.length}</strong> 条学科提问（旧备份未包含）`;
     openConfirm({
       title: '从备份恢复课件库？',
-      message: `将使用备份中的 <strong>${backupItems.length}</strong> 条记录替换当前 <strong>${state.items.length}</strong> 条记录。<br>不会删除或修改电脑中的任何课件原文件。`,
+      message: `将使用备份中的 <strong>${backupItems.length}</strong> 条课件记录和 ${questionMessage}替换当前数据。<br>不会删除或修改电脑中的任何课件原文件。`,
       confirmText: '恢复数据',
       danger: true,
       onConfirm: async () => {
         state.items = backupItems;
+        state.questions = backupQuestions;
+        state.questionVoteEditId = '';
         state.settings = {
           ...(parsed.settings || {}),
           initialized: true
@@ -2331,7 +2811,7 @@
         resetLibraryFilters({ keepPage: true });
         await checkMissingFiles(false);
         renderAll();
-        showToast(`已从备份恢复 ${backupItems.length} 条课件记录。`, { type: 'success', title: '恢复完成' });
+        showToast(`已从备份恢复 ${backupItems.length} 条课件记录、${backupQuestions.length} 条学科提问。`, { type: 'success', title: '恢复完成' });
       }
     });
   }
@@ -2520,6 +3000,12 @@
       return;
     }
 
+    const batchDeleteButton = event.target.closest('[data-action="batch-delete"]');
+    if (batchDeleteButton) {
+      openBatchDeleteModal();
+      return;
+    }
+
     const importButton = event.target.closest('[data-action="import"]');
     if (importButton) {
       openImportModal(importButton.dataset.importMode || '');
@@ -2567,6 +3053,85 @@
       state.view = viewButton.dataset.view === 'list' ? 'list' : 'grid';
       renderFilters();
       renderLibrary();
+      return;
+    }
+
+    const vocabLetterButton = event.target.closest('[data-vocab-letter]');
+    if (vocabLetterButton) {
+      state.vocabLetter = vocabLetterButton.dataset.vocabLetter || '';
+      state.vocabLimit = 60;
+      renderVocab();
+      return;
+    }
+
+    if (event.target.closest('[data-vocab-clear]')) {
+      setVocabQuery('');
+      $('#vocabSearch')?.focus();
+      return;
+    }
+
+    const questionStatusButton = event.target.closest('[data-question-status]');
+    if (questionStatusButton) {
+      state.questionStatus = questionStatusButton.dataset.questionStatus || 'open';
+      renderQuestionsList();
+      return;
+    }
+
+    const questionVoteButton = event.target.closest('[data-question-vote]');
+    if (questionVoteButton) {
+      const question = state.questions.find((entry) => entry.id === questionVoteButton.dataset.questionVote);
+      if (!question) return;
+      question.votes = Math.min(9999, (Number(question.votes) || 0) + 1);
+      question.updatedAt = new Date().toISOString();
+      renderQuestionsList();
+      persistLibrary();
+      return;
+    }
+
+    const questionEditVotesButton = event.target.closest('[data-question-edit-votes]');
+    if (questionEditVotesButton) {
+      state.questionVoteEditId = questionEditVotesButton.dataset.questionEditVotes;
+      renderQuestionsList();
+      window.setTimeout(() => {
+        const input = $(`[data-question-vote-input="${state.questionVoteEditId}"]`);
+        input?.focus();
+        input?.select();
+      }, 30);
+      return;
+    }
+
+    const questionSaveVotesButton = event.target.closest('[data-question-save-votes]');
+    if (questionSaveVotesButton) {
+      const question = state.questions.find((entry) => entry.id === questionSaveVotesButton.dataset.questionSaveVotes);
+      if (!question) return;
+      const input = $(`[data-question-vote-input="${question.id}"]`);
+      updateQuestionVotes(question, input?.value);
+      return;
+    }
+
+    if (event.target.closest('[data-question-cancel-votes]')) {
+      state.questionVoteEditId = '';
+      renderQuestionsList();
+      return;
+    }
+
+    const questionDoneButton = event.target.closest('[data-question-done]');
+    if (questionDoneButton) {
+      const question = state.questions.find((entry) => entry.id === questionDoneButton.dataset.questionDone);
+      if (!question) return;
+      question.status = question.status === 'done' ? 'open' : 'done';
+      question.updatedAt = new Date().toISOString();
+      renderChrome();
+      renderQuestionsList();
+      persistLibrary();
+      showToast(question.status === 'done' ? '已标记为已讲解。' : '已重新放回待讲解。', { type: 'success', duration: 2200 });
+      return;
+    }
+
+    const questionDeleteButton = event.target.closest('[data-question-delete]');
+    if (questionDeleteButton) {
+      const question = state.questions.find((entry) => entry.id === questionDeleteButton.dataset.questionDelete);
+      if (question) askDeleteQuestion(question);
       return;
     }
 
@@ -2636,6 +3201,7 @@
 
   function bindEvents() {
     document.addEventListener('click', handleDocumentClick);
+    bindQuestionEvents();
 
     ui.search.addEventListener('input', () => {
       const value = ui.search.value;
@@ -2793,7 +3359,7 @@
 
     ui.modalLayer.addEventListener('click', (event) => {
       if (event.target === ui.modalLayer) {
-        if (state.importBusy || state.importScanning || state.batchSaveBusy) return;
+        if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy) return;
         if ($('#confirmActionButton')?.disabled) return;
         closeModal();
         return;
@@ -2810,13 +3376,17 @@
         return;
       }
       if (event.target.closest('[data-close-modal]')) {
-        if (state.importBusy || state.importScanning || state.batchSaveBusy) return;
+        if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy) return;
         if ($('#confirmActionButton')?.disabled) return;
         closeModal();
         return;
       }
       if (event.target.closest('#batchSaveConfirmButton')) {
         startBatchSave();
+        return;
+      }
+      if (event.target.closest('#batchDeleteConfirmButton')) {
+        startBatchDelete();
         return;
       }
       const sourceButton = event.target.closest('[data-import-source]');
@@ -2859,6 +3429,23 @@
     });
 
     ui.modalLayer.addEventListener('change', (event) => {
+      if (event.target.id === 'batchDeleteSelectAll') {
+        const checked = event.target.checked;
+        state.batchDeleteSelected.clear();
+        if (checked) state.batchDeleteItems.forEach((item) => state.batchDeleteSelected.add(item.id));
+        $$('#batchDeleteList [data-batch-delete-id]').forEach((input) => {
+          input.checked = checked;
+        });
+        batchDeleteSelectionSummary();
+        return;
+      }
+      if (event.target.matches('[data-batch-delete-id]')) {
+        const id = event.target.dataset.batchDeleteId;
+        if (event.target.checked) state.batchDeleteSelected.add(id);
+        else state.batchDeleteSelected.delete(id);
+        batchDeleteSelectionSummary();
+        return;
+      }
       if (event.target.id === 'batchSaveSelectAll') {
         const checked = event.target.checked;
         state.batchSaveSelected.clear();
@@ -2912,13 +3499,26 @@
       if ((isMac ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === 'k') {
         if (!ui.modalLayer.hidden || !ui.drawerOverlay.hidden) return;
         event.preventDefault();
+        if (state.page === 'vocab') {
+          const vocabSearch = $('#vocabSearch');
+          vocabSearch?.focus();
+          vocabSearch?.select();
+          return;
+        }
+        if (state.page === 'questions') {
+          const questionSearch = $('#questionSearch');
+          questionSearch?.focus();
+          questionSearch?.select();
+          return;
+        }
+        if (ui.searchBox) ui.searchBox.hidden = false;
         ui.search.focus();
         ui.search.select();
         return;
       }
       if (event.key === 'Escape') {
         if (!ui.modalLayer.hidden) {
-          if (state.importBusy || state.importScanning || state.batchSaveBusy) return;
+          if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy) return;
           if ($('#confirmActionButton')?.disabled) return;
           closeModal();
           return;
@@ -2989,6 +3589,7 @@
       const result = await api.loadLibrary();
       if (!result || !result.ok) throw new Error(result?.error || '无法读取本机课件库');
       state.items = Array.isArray(result.items) ? result.items.filter((item) => item && item.id && item.name) : [];
+      state.questions = Array.isArray(result.questions) ? result.questions.filter((q) => q && q.id && q.title) : [];
       state.settings = result.settings && typeof result.settings === 'object' ? result.settings : {};
       state.dataPath = result.libraryPath || result.dataDir || '';
       if (!state.settings.initialized && state.items.length === 0) {
