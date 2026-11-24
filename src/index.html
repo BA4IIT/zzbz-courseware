@@ -81,6 +81,30 @@
             </button>
           </nav>
 
+          <nav class="nav-group" aria-label="课堂工具">
+            <div class="nav-label">课堂工具 <span>CLASSROOM TOOLS</span></div>
+            <button type="button" class="nav-item" data-page="camera">
+              <span class="nav-icon" data-icon="camera"></span>
+              <span class="nav-text">展台</span>
+            </button>
+            <button type="button" class="nav-item" data-page="whiteboard">
+              <span class="nav-icon" data-icon="presentation"></span>
+              <span class="nav-text">白板</span>
+            </button>
+            <button type="button" class="nav-item" data-page="browser">
+              <span class="nav-icon" data-icon="globe"></span>
+              <span class="nav-text">内置浏览器</span>
+            </button>
+            <button type="button" class="nav-item" data-page="timetable">
+              <span class="nav-icon" data-icon="calendar"></span>
+              <span class="nav-text">课程表</span>
+            </button>
+            <button type="button" class="nav-item" data-page="usb">
+              <span class="nav-icon" data-icon="shield"></span>
+              <span class="nav-text">U 盘检测</span>
+            </button>
+          </nav>
+
           <nav class="nav-group" aria-label="快捷视图">
             <div class="nav-label">快捷视图 <span>QUICK VIEW</span></div>
             <button type="button" class="nav-item slim" data-quick="recent">
@@ -133,6 +157,9 @@
             <div class="save-state" id="saveState" title="数据保存在本机">
               <span class="save-dot"></span><span id="saveStateText">已本地保存</span>
             </div>
+            <button type="button" class="icon-button" id="checkUpdateButton" title="检查更新" aria-label="检查更新">
+              <span data-icon="refresh"></span>
+            </button>
             <button type="button" class="icon-button" id="helpButton" title="使用指南" aria-label="使用指南">
               <span data-icon="help"></span>
             </button>
@@ -455,6 +482,187 @@
               </div>
             </section>
 
+            <!-- 内置浏览器 -->
+            <section class="page-panel" id="page-browser" data-panel="browser" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> BUILT-IN BROWSER</div>
+                  <h1>内置浏览器</h1>
+                  <p>固定打开 zz8zszy.cn，登录账号可加密保存在本机，打开登录页时自动填充。</p>
+                </div>
+                <div class="browser-head-badge"><strong>zz8zszy.cn</strong><span>固定教学资源站</span></div>
+              </div>
+              <div class="browser-layout">
+                <section class="browser-card">
+                  <div class="browser-toolbar">
+                    <button type="button" class="icon-button tiny" data-browser-back title="后退" aria-label="后退"><span data-icon="arrowLeft"></span></button>
+                    <button type="button" class="icon-button tiny" data-browser-forward title="前进" aria-label="前进"><span data-icon="arrowRight"></span></button>
+                    <button type="button" class="icon-button tiny" data-browser-reload title="刷新" aria-label="刷新"><span data-icon="refresh"></span></button>
+                    <div class="browser-address"><span data-icon="lock"></span><strong>https://zz8zszy.cn</strong></div>
+                    <button type="button" class="text-button small" data-browser-external>在系统浏览器打开</button>
+                  </div>
+                  <div class="browser-frame-wrap">
+                    <webview id="siteWebview" partition="persist:zz8site"></webview>
+                    <div class="browser-loading" id="browserLoading"><span class="spinner"></span>正在打开 zz8zszy.cn…</div>
+                  </div>
+                </section>
+                <aside class="browser-credentials">
+                  <div class="panel-head"><div><span class="panel-kicker">SAVED LOGIN</span><h3>保存登录账号</h3></div><span class="browser-safe-mark" data-icon="lock"></span></div>
+                  <div class="browser-credential-body">
+                    <p>账号密码使用 Windows 系统加密后保存在本机，不上传。打开登录页时会尝试自动填入。</p>
+                    <label class="question-field"><span>账号</span><input id="browserUsername" type="text" autocomplete="username" placeholder="输入 zz8zszy.cn 账号"></label>
+                    <label class="question-field"><span>密码</span><input id="browserPassword" type="password" autocomplete="current-password" placeholder="留空则保留已保存密码"></label>
+                    <button type="button" class="btn btn-primary browser-save-btn" id="saveBrowserCredentials"><span data-icon="check"></span>保存账号密码</button>
+                    <div class="browser-credential-actions">
+                      <button type="button" class="text-button small" id="fillBrowserCredentials">立即自动填充</button>
+                      <button type="button" class="text-button small browser-danger-link" id="clearBrowserCredentials">清除保存</button>
+                    </div>
+                    <div class="browser-credential-status" id="browserCredentialStatus">尚未保存登录账号</div>
+                  </div>
+                </aside>
+              </div>
+            </section>
+
+            <!-- 展台 -->
+            <section class="page-panel" id="page-camera" data-panel="camera" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> DOCUMENT CAMERA</div>
+                  <h1>展台</h1>
+                  <p>自动获取已连接摄像头，把作业、试卷或实验过程投到屏幕上，并可直接批画。</p>
+                </div>
+                <div class="camera-head-status" id="cameraHeadStatus"><i></i><span>等待摄像头</span></div>
+              </div>
+              <div class="camera-layout">
+                <div class="camera-stage" id="cameraStage">
+                  <video id="cameraVideo" autoplay muted playsinline></video>
+                  <canvas id="cameraCanvas" class="camera-canvas"></canvas>
+                  <div class="camera-empty" id="cameraEmpty"><span data-icon="camera"></span><strong>正在寻找摄像头…</strong><p>连接 USB 摄像头或展台后，画面会自动出现在这里。</p></div>
+                  <span class="camera-live-badge" id="cameraLiveBadge" hidden>LIVE</span>
+                </div>
+                <aside class="camera-controls">
+                  <div class="panel-head"><div><span class="panel-kicker">CAMERA</span><h3>摄像头与批画</h3></div></div>
+                  <div class="camera-control-body">
+                    <label class="question-field"><span>已连接摄像头</span><select id="cameraDeviceSelect"></select></label>
+                    <div class="camera-button-row">
+                      <button type="button" class="btn btn-primary" id="cameraStart"><span data-icon="camera"></span>启动 / 重连</button>
+                      <button type="button" class="btn btn-light" id="cameraStop">停止</button>
+                    </div>
+                    <button type="button" class="btn btn-soft camera-fullscreen-btn" id="cameraFullscreen"><span data-icon="monitor"></span>全屏投放</button>
+                    <div class="drawing-tools" id="cameraDrawingTools">
+                      <span class="drawing-label">批画颜色</span>
+                      <button type="button" class="drawing-color is-active" data-draw-color="#e35d5d" style="--swatch:#e35d5d"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2f7fd8" style="--swatch:#2f7fd8"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2d9d78" style="--swatch:#2d9d78"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#d99a3e" style="--swatch:#d99a3e"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#263b50" style="--swatch:#263b50"></button>
+                      <button type="button" class="drawing-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
+                      <button type="button" class="drawing-tool" data-draw-clear><span data-icon="refresh"></span>清空批画</button>
+                    </div>
+                    <label class="drawing-width">笔迹粗细 <input type="range" id="cameraPenWidth" min="1" max="16" value="4"></label>
+                    <p class="camera-hint">提示：全屏投放后可继续用鼠标或触摸屏批画；按 Esc 退出全屏。</p>
+                  </div>
+                </aside>
+              </div>
+            </section>
+
+            <!-- 白板 -->
+            <section class="page-panel" id="page-whiteboard" data-panel="whiteboard" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> WHITEBOARD</div>
+                  <h1>白板</h1>
+                  <p>课堂随手板书，多种颜色、粗细和橡皮；可全屏展示并保存为图片。</p>
+                </div>
+                <button type="button" class="btn btn-soft" id="whiteboardFullscreen"><span data-icon="monitor"></span>全屏白板</button>
+              </div>
+              <div class="whiteboard-layout">
+                <div class="whiteboard-stage" id="whiteboardStage">
+                  <canvas id="whiteboardCanvas"></canvas>
+                </div>
+                <aside class="whiteboard-controls">
+                  <div class="panel-head"><div><span class="panel-kicker">TOOLS</span><h3>板书工具</h3></div></div>
+                  <div class="whiteboard-control-body">
+                    <span class="drawing-label">颜色</span>
+                    <div class="drawing-color-grid">
+                      <button type="button" class="drawing-color is-active" data-draw-color="#263b50" style="--swatch:#263b50"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#e35d5d" style="--swatch:#e35d5d"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2f7fd8" style="--swatch:#2f7fd8"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2d9d78" style="--swatch:#2d9d78"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#d99a3e" style="--swatch:#d99a3e"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#7b61c9" style="--swatch:#7b61c9"></button>
+                    </div>
+                    <div class="whiteboard-tool-row">
+                      <button type="button" class="drawing-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
+                      <button type="button" class="drawing-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
+                    </div>
+                    <label class="drawing-width">笔迹粗细 <input type="range" id="whiteboardPenWidth" min="1" max="18" value="5"></label>
+                    <button type="button" class="btn btn-light whiteboard-save" id="whiteboardSave"><span data-icon="download"></span>保存为图片</button>
+                    <p class="camera-hint">白板内容只在本机显示，不会自动上传。</p>
+                  </div>
+                </aside>
+              </div>
+            </section>
+
+            <!-- 课程表 -->
+            <section class="page-panel" id="page-timetable" data-panel="timetable" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> WEEKLY TIMETABLE</div>
+                  <h1>课程表</h1>
+                  <p>直接点击表格修改节次、时间和课程；周六、周日可分别设置 A 表 / B 表。</p>
+                </div>
+                <div class="timetable-head-actions">
+                  <div class="week-switch" id="timetableWeekSwitch">
+                    <button type="button" class="is-active" data-timetable-week="A">A 表</button>
+                    <button type="button" data-timetable-week="B">B 表</button>
+                  </div>
+                  <button type="button" class="btn btn-primary" id="saveTimetableButton"><span data-icon="check"></span>保存课程表</button>
+                </div>
+              </div>
+              <div class="timetable-card">
+                <div class="timetable-toolbar">
+                  <span class="timetable-tip" id="timetableWeekHint">当前编辑周六、周日 A 表</span>
+                  <button type="button" class="text-button small" id="addTimetablePeriod"><span data-icon="plus"></span>添加一节</button>
+                </div>
+                <div class="timetable-scroll"><table class="timetable-table" id="timetableTable"></table></div>
+                <div class="timetable-footer"><span id="timetableSaveStatus">修改后请点击「保存课程表」</span><span>周六 / 周日可切换 A/B 表</span></div>
+              </div>
+            </section>
+
+            <!-- U 盘检测 -->
+            <section class="page-panel" id="page-usb" data-panel="usb" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> USB SAFETY SCAN</div>
+                  <h1>U 盘检测</h1>
+                  <p>检测可移动磁盘中的可疑可执行文件、伪装文档和 autorun 自动运行项。</p>
+                </div>
+                <button type="button" class="btn btn-light" id="refreshUsbDrives"><span data-icon="refresh"></span>刷新磁盘</button>
+              </div>
+              <div class="usb-layout">
+                <section class="usb-card usb-control-card">
+                  <div class="panel-head"><div><span class="panel-kicker">REMOVABLE DRIVE</span><h3>选择 U 盘</h3></div><span class="usb-shield-mark" data-icon="shield"></span></div>
+                  <div class="usb-control-body">
+                    <label class="question-field"><span>已连接的可移动磁盘</span><select id="usbDriveSelect"></select></label>
+                    <div class="usb-drive-meta" id="usbDriveMeta">插入 U 盘后点击「刷新磁盘」。</div>
+                    <div class="usb-button-row">
+                      <button type="button" class="btn btn-primary" id="scanUsbButton"><span data-icon="search"></span>开始安全检测</button>
+                      <button type="button" class="btn btn-light" id="defenderUsbButton"><span data-icon="shield"></span>Windows Defender</button>
+                    </div>
+                    <div class="usb-scan-status" id="usbScanStatus">尚未开始检测</div>
+                    <p class="usb-disclaimer">本功能进行可疑文件特征检查，不替代专业杀毒软件。Windows Defender 扫描可能需要较长时间。</p>
+                  </div>
+                </section>
+                <section class="usb-card usb-results-card">
+                  <div class="panel-head"><div><span class="panel-kicker">SCAN RESULTS</span><h3>检测结果</h3></div><span class="usb-count-badge" id="usbFindingCount">0 项</span></div>
+                  <div class="usb-results" id="usbFindings">
+                    <div class="question-empty"><span data-icon="shield"></span><strong>等待检测</strong><p>选择一个 U 盘并点击「开始安全检测」，结果会显示在这里。</p></div>
+                  </div>
+                </section>
+              </div>
+            </section>
+
             <!-- 数据管理 -->
             <section class="page-panel" id="page-data" data-panel="data" hidden>
               <div class="page-heading">
@@ -523,7 +731,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.3.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.4.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中高中课件管理系统</strong><span>本地课件资源整理工具</span></div>
@@ -533,7 +741,7 @@
                     <li><span data-icon="check"></span>引用本机文件，不复制原件、不占用双份空间</li>
                     <li><span data-icon="check"></span>数据与文件均留在本机，不上传云端</li>
                   </ul>
-                  <div class="about-foot"><span>枣庄市第八中学 · 教学信息化中心</span><button type="button" class="text-button small" id="openDataDirButton">数据目录</button></div>
+                  <div class="about-foot"><span>枣庄市第八中学 · 教学信息化中心</span><div class="about-foot-actions"><button type="button" class="text-button small" id="checkUpdateDataButton">检查更新</button><button type="button" class="text-button small" id="openDataDirButton">数据目录</button></div></div>
                 </section>
               </div>
             </section>

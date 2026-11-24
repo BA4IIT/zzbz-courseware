@@ -1,4 +1,4 @@
-﻿/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
+/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
  * 访问 index.html?mock=1 时启用。 */
 (function () {
   'use strict';
@@ -94,6 +94,38 @@
     async downloadFilesZip() {
       return { ok: false, error: '浏览器预览模式不能打包下载本机文件。' };
     },
+    async savePng() {
+      return { ok: false, error: '浏览器预览模式不能保存本机图片。' };
+    },
+    async checkUpdate() {
+      return {
+        ok: true,
+        currentVersion: '1.4.0',
+        latestVersion: '1.4.0',
+        isLatest: true,
+        updateAvailable: false,
+        releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
+        assetUrl: '',
+        assetName: '',
+        notes: ''
+      };
+    },
+    async downloadUpdate() {
+      return { ok: false, error: '浏览器预览模式不能下载更新。' };
+    },
+    async launchInstaller() {
+      return { ok: false, error: '浏览器预览模式不能打开安装包。' };
+    },
+    browserCredentials: {
+      async get() { return { ok: true, username: '', password: '', savedAt: '' }; },
+      async save() { return { ok: false, error: '浏览器预览模式不能保存账号。' }; },
+      async clear() { return { ok: true }; }
+    },
+    usb: {
+      async list() { return { ok: true, drives: [] }; },
+      async scan() { return { ok: false, error: '浏览器预览模式不能扫描 U 盘。' }; },
+      async defenderScan() { return { ok: false, error: '浏览器预览模式不能调用 Windows Defender。' }; }
+    },
     getPreviewUrl() {
       return '';
     },
@@ -109,7 +141,7 @@
       return {
         ok: true,
         name: '枣庄八中高中课件管理系统',
-        version: '1.3.0',
+        version: '1.4.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',

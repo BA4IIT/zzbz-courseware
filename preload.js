@@ -29,10 +29,24 @@ contextBridge.exposeInMainWorld('zzbz', {
   downloadFilesZip: (items) => ipcRenderer.invoke('files:download-zip', { items }),
   getPreviewUrl: previewUrl,
   saveText: (options) => ipcRenderer.invoke('export:text', options),
+  savePng: (options) => ipcRenderer.invoke('file:save-png', options),
   openJson: () => ipcRenderer.invoke('dialog:open-json'),
   getAppInfo: () => ipcRenderer.invoke('app:info'),
   openDataDir: () => ipcRenderer.invoke('app:open-data-dir'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  checkUpdate: () => ipcRenderer.invoke('app:check-update'),
+  downloadUpdate: (payload) => ipcRenderer.invoke('app:download-update', payload),
+  launchInstaller: (filePath) => ipcRenderer.invoke('app:launch-installer', filePath),
+  browserCredentials: {
+    get: () => ipcRenderer.invoke('browser:get-credentials'),
+    save: (payload) => ipcRenderer.invoke('browser:save-credentials', payload),
+    clear: () => ipcRenderer.invoke('browser:clear-credentials')
+  },
+  usb: {
+    list: () => ipcRenderer.invoke('usb:list'),
+    scan: (root) => ipcRenderer.invoke('usb:scan', root),
+    defenderScan: (root) => ipcRenderer.invoke('usb:defender-scan', root)
+  },
   getDroppedPaths: (files) => {
     const paths = [];
     for (const file of files || []) {

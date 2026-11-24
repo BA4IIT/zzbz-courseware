@@ -37,8 +37,21 @@
     types: '课程分类',
     vocab: '英语 3500 词汇',
     questions: '学科提问',
+    browser: '内置浏览器',
+    camera: '展台',
+    whiteboard: '白板',
+    timetable: '课程表',
+    usb: 'U 盘检测',
     data: '数据管理'
   };
+  const TOOL_PAGES = new Set(['vocab', 'questions', 'browser', 'camera', 'whiteboard', 'timetable', 'usb']);
+  const TIMETABLE_DAY_FIELDS = [
+    { key: 'mon', label: '周一' },
+    { key: 'tue', label: '周二' },
+    { key: 'wed', label: '周三' },
+    { key: 'thu', label: '周四' },
+    { key: 'fri', label: '周五' }
+  ];
 
   function esc(value) {
     return String(value == null ? '' : value)
@@ -250,6 +263,21 @@
     vocabQuery: '',
     vocabLetter: '',
     vocabLimit: 60,
+    timetable: null,
+    timetableWeek: 'A',
+    usbDrives: [],
+    usbScanResult: null,
+    usbScanning: false,
+    usbLoading: false,
+    cameraStream: null,
+    cameraDeviceId: '',
+    cameraStarting: false,
+    cameraAutoStarted: false,
+    browserInitialized: false,
+    browserCredentials: null,
+    updateChecking: false,
+    updateDownloading: false,
+    updateInfo: null,
     modal: null,
     confirmCallback: null,
     dragDepth: 0
@@ -528,7 +556,7 @@
     if (ui.navQuestionCount) ui.navQuestionCount.textContent = String(state.questions.filter((q) => q.status !== 'done').length);
     ui.favCount.textContent = String(state.items.filter((item) => item.favorite).length);
     ui.incompleteCount.textContent = String(state.items.filter((item) => !isComplete(item)).length);
-    if (ui.searchBox) ui.searchBox.hidden = state.page === 'vocab' || state.page === 'questions';
+    if (ui.searchBox) ui.searchBox.hidden = TOOL_PAGES.has(state.page);
 
     ui.navItems.forEach((button) => {
       button.classList.toggle('is-active', button.dataset.page === state.page);
@@ -1027,7 +1055,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.3.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '1.4.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1337,6 +1365,936 @@
     }
   }
 
+  /* ---------------- 课程表 ---------------- */
+
+  function defaultClientTimetable() {
+    return {
+      periods: Array.from({ length: 8 }, (_, index) => ({
+        id: `p${index + 1}`,
+        label: `第${index + 1}节`,
+        time: '',
+        mon: '', tue: '', wed: '', thu: '', fri: '',
+        satA: '', satB: '', sunA: '', sunB: ''
+      })),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function normalizeClientTimetable(raw) {
+    if (!raw || !Array.isArray(raw.periods) || !raw.periods.length) return defaultClientTimetable();
+    return {
+      periods: raw.periods.slice(0, 12).map((period, index) => ({
+        id: String(period.id || `p${index + 1}`),
+        label: String(period.label || `第${index + 1}节`),
+        time: String(period.time || ''),
+        mon: String(period.mon || ''),
+        tue: String(period.tue || ''),
+        wed: String(period.wed || ''),
+        thu: String(period.thu || ''),
+        fri: String(period.fri || ''),
+        satA: String(period.satA || ''),
+        satB: String(period.satB || ''),
+        sunA: String(period.sunA || ''),
+        sunB: String(period.sunB || '')
+      })),
+      updatedAt: raw.updatedAt || new Date().toISOString()
+    };
+  }
+
+  function collectTimetableFromDom() {
+    const table = $('#timetableTable');
+    if (!table) return state.timetable || defaultClientTimetable();
+    const previous = state.timetable || defaultClientTimetable();
+    const satKey = state.timetableWeek === 'B' ? 'satB' : 'satA';
+    const sunKey = state.timetableWeek === 'B' ? 'sunB' : 'sunA';
+    const rows = $$('#timetableTable tbody tr');
+    const periods = rows.map((row, index) => {
+      const old = previous.periods[index] || {};
+      const read = (field) => row.querySelector(`[data-timetable-field="${field}"]`)?.value || '';
+      const period = {
+        id: old.id || `p${index + 1}`,
+        label: read('label') || `第${index + 1}节`,
+        time: read('time'),
+        mon: read('mon'),
+        tue: read('tue'),
+        wed: read('wed'),
+        thu: read('thu'),
+        fri: read('fri'),
+        satA: old.satA || '',
+        satB: old.satB || '',
+        sunA: old.sunA || '',
+        sunB: old.sunB || ''
+      };
+      period[satKey] = read(satKey);
+      period[sunKey] = read(sunKey);
+      return period;
+    });
+    state.timetable = {
+      periods: periods.length ? periods : defaultClientTimetable().periods,
+      updatedAt: new Date().toISOString()
+    };
+    return state.timetable;
+  }
+
+  function renderTimetable() {
+    if (!state.timetable) state.timetable = defaultClientTimetable();
+    const timetable = state.timetable;
+    const week = state.timetableWeek;
+    $$('#timetableWeekSwitch [data-timetable-week]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.timetableWeek === week);
+    });
+    const hint = $('#timetableWeekHint');
+    if (hint) hint.textContent = `当前编辑周六、周日 ${week} 表`;
+    const table = $('#timetableTable');
+    if (!table) return;
+    const weeks = week === 'B' ? { sat: 'satB', sun: 'sunB' } : { sat: 'satA', sun: 'sunA' };
+    table.innerHTML = `<thead><tr>
+      <th>节次</th><th>时间</th><th>周一</th><th>周二</th><th>周三</th><th>周四</th><th>周五</th>
+      <th>周六（${week}表）</th><th>周日（${week}表）</th><th></th>
+    </tr></thead><tbody>
+      ${timetable.periods.map((period, index) => `<tr data-timetable-row="${index}">
+        <td><input class="timetable-input period-label" data-timetable-field="label" value="${attr(period.label)}" aria-label="节次"></td>
+        <td><input class="timetable-input period-time" data-timetable-field="time" value="${attr(period.time)}" placeholder="08:00" aria-label="时间"></td>
+        ${TIMETABLE_DAY_FIELDS.map((day) => `<td><input class="timetable-input" data-timetable-field="${day.key}" value="${attr(period[day.key])}" aria-label="${day.label}"></td>`).join('')}
+        <td><input class="timetable-input" data-timetable-field="${weeks.sat}" value="${attr(period[weeks.sat])}" aria-label="周六"></td>
+        <td><input class="timetable-input" data-timetable-field="${weeks.sun}" value="${attr(period[weeks.sun])}" aria-label="周日"></td>
+        <td><button type="button" class="timetable-remove" data-timetable-remove="${index}" title="删除这一节">${icon('trash')}</button></td>
+      </tr>`).join('')}
+    </tbody>`;
+    const status = $('#timetableSaveStatus');
+    if (status) status.textContent = `共 ${timetable.periods.length} 节 · 修改后请点击「保存课程表」`;
+  }
+
+  function markTimetableDirty() {
+    const status = $('#timetableSaveStatus');
+    if (status) status.textContent = '有未保存的修改';
+  }
+
+  async function saveTimetable() {
+    collectTimetableFromDom();
+    const ok = await persistLibrary();
+    if (!ok) return;
+    const status = $('#timetableSaveStatus');
+    if (status) status.textContent = `已保存 · ${formatDateTime(state.timetable.updatedAt)}`;
+    showToast('课程表已保存到本机。', { type: 'success', title: '课程表已更新' });
+  }
+
+  /* ---------------- 绘图工具与课堂页面 ---------------- */
+
+  const drawingState = {
+    camera: { canvasId: 'cameraCanvas', color: '#e35d5d', width: 4, eraser: false, drawing: false, last: null, initialized: false },
+    whiteboard: { canvasId: 'whiteboardCanvas', color: '#263b50', width: 5, eraser: false, drawing: false, last: null, initialized: false }
+  };
+
+  function activeDrawingState() {
+    return state.page === 'whiteboard' ? drawingState.whiteboard : drawingState.camera;
+  }
+
+  function resizeDrawingCanvas(board) {
+    const canvas = document.getElementById(board.canvasId);
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(rect.width * dpr));
+    const height = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width === width && canvas.height === height) return;
+    const snapshot = canvas.width > 1 && canvas.height > 1 ? canvas.toDataURL('image/png') : '';
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (snapshot) {
+      const image = new Image();
+      image.onload = () => {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      };
+      image.src = snapshot;
+    }
+  }
+
+  function clearDrawing(board) {
+    const canvas = document.getElementById(board.canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  function initDrawingBoard(board) {
+    if (board.initialized) return;
+    const canvas = document.getElementById(board.canvasId);
+    if (!canvas) return;
+    board.initialized = true;
+    const resize = () => resizeDrawingCanvas(board);
+    requestAnimationFrame(resize);
+    if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
+    window.addEventListener('resize', resize);
+    canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      board.drawing = true;
+      board.last = pointerPoint(canvas, event);
+      drawDot(board, board.last);
+      try {
+        canvas.setPointerCapture?.(event.pointerId);
+      } catch (error) {
+        /* 合成事件或触摸事件可能没有可捕获的指针 */
+      }
+      event.preventDefault();
+    });
+    canvas.addEventListener('pointermove', (event) => {
+      if (!board.drawing) return;
+      const point = pointerPoint(canvas, event);
+      drawStroke(board, board.last, point);
+      board.last = point;
+      event.preventDefault();
+    });
+    const end = (event) => {
+      if (!board.drawing) return;
+      board.drawing = false;
+      board.last = null;
+      try {
+        canvas.releasePointerCapture?.(event.pointerId);
+      } catch (error) {
+        /* 释放失败不影响结束绘制 */
+      }
+    };
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+    canvas.addEventListener('pointerleave', (event) => {
+      if (board.drawing && event.pointerType === 'mouse') end(event);
+    });
+  }
+
+  function pointerPoint(canvas, event) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / Math.max(1, rect.width)),
+      y: (event.clientY - rect.top) * (canvas.height / Math.max(1, rect.height))
+    };
+  }
+
+  function drawingContext(board, point) {
+    const canvas = document.getElementById(board.canvasId);
+    if (!canvas) return null;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = board.width;
+    ctx.globalCompositeOperation = board.eraser ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = board.color;
+    ctx.fillStyle = board.color;
+    return ctx;
+  }
+
+  function drawDot(board, point) {
+    const ctx = drawingContext(board);
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.arc(point.x / (window.devicePixelRatio || 1), point.y / (window.devicePixelRatio || 1), board.width / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawStroke(board, from, to) {
+    const ctx = drawingContext(board);
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.beginPath();
+    ctx.moveTo(from.x / dpr, from.y / dpr);
+    ctx.lineTo(to.x / dpr, to.y / dpr);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function setDrawingColor(color) {
+    const board = activeDrawingState();
+    board.eraser = false;
+    board.color = color;
+    const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
+    $$('.drawing-color', $(scope)).forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.drawColor === color);
+    });
+    $$('[data-draw-tool="eraser"]', $(scope)).forEach((button) => button.classList.remove('is-active'));
+  }
+
+  function setEraser(active) {
+    const board = activeDrawingState();
+    board.eraser = active;
+    const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
+    $$('[data-draw-tool="eraser"]', $(scope)).forEach((button) => button.classList.toggle('is-active', active));
+    if (active) $$('.drawing-color', $(scope)).forEach((button) => button.classList.remove('is-active'));
+  }
+
+  /* ---------------- 展台 ---------------- */
+
+  function cameraStatus(text, live) {
+    const status = $('#cameraHeadStatus');
+    if (!status) return;
+    status.classList.toggle('is-live', Boolean(live));
+    const label = status.querySelector('span');
+    if (label) label.textContent = text;
+  }
+
+  async function refreshCameraDevices(selectedId) {
+    const select = $('#cameraDeviceSelect');
+    if (!select || !navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter((device) => device.kind === 'videoinput');
+      select.innerHTML = cameras.length
+        ? cameras.map((camera, index) => `<option value="${attr(camera.deviceId)}"${selectedId === camera.deviceId ? ' selected' : ''}>${esc(camera.label || `摄像头 ${index + 1}`)}</option>`).join('')
+        : '<option value="">未检测到摄像头</option>';
+    } catch (error) {
+      /* 枚举失败时保留默认摄像头 */
+    }
+  }
+
+  async function startCamera(deviceId) {
+    if (state.cameraStarting) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraStatus('浏览器不支持摄像头', false);
+      return;
+    }
+    state.cameraStarting = true;
+    cameraStatus('正在连接摄像头…', false);
+    try {
+      if (state.cameraStream) {
+        state.cameraStream.getTracks().forEach((track) => track.stop());
+        state.cameraStream = null;
+      }
+      const constraints = {
+        audio: false,
+        video: deviceId ? { deviceId: { exact: deviceId } } : true
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      state.cameraStream = stream;
+      const video = $('#cameraVideo');
+      if (video) {
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+      }
+      const empty = $('#cameraEmpty');
+      if (empty) empty.hidden = true;
+      const liveBadge = $('#cameraLiveBadge');
+      if (liveBadge) liveBadge.hidden = false;
+      const track = stream.getVideoTracks()[0];
+      state.cameraDeviceId = track?.getSettings?.().deviceId || deviceId || '';
+      cameraStatus('展台已连接', true);
+      await refreshCameraDevices(state.cameraDeviceId);
+      const select = $('#cameraDeviceSelect');
+      if (select && state.cameraDeviceId) select.value = state.cameraDeviceId;
+    } catch (error) {
+      cameraStatus('无法打开摄像头', false);
+      const liveBadge = $('#cameraLiveBadge');
+      if (liveBadge) liveBadge.hidden = true;
+      const empty = $('#cameraEmpty');
+      if (empty) {
+        empty.hidden = false;
+        empty.innerHTML = `<span>${icon('camera')}</span><strong>无法打开摄像头</strong><p>${esc(error.message || '请检查摄像头是否被其他软件占用，并允许摄像头权限。')}</p>`;
+      }
+    } finally {
+      state.cameraStarting = false;
+    }
+  }
+
+  function stopCamera() {
+    if (state.cameraStream) {
+      state.cameraStream.getTracks().forEach((track) => track.stop());
+      state.cameraStream = null;
+    }
+    const video = $('#cameraVideo');
+    if (video) video.srcObject = null;
+    const empty = $('#cameraEmpty');
+    if (empty) empty.hidden = false;
+    const liveBadge = $('#cameraLiveBadge');
+    if (liveBadge) liveBadge.hidden = true;
+    state.cameraAutoStarted = false;
+    cameraStatus('摄像头已停止', false);
+  }
+
+  function renderCamera() {
+    initDrawingBoard(drawingState.camera);
+    requestAnimationFrame(() => resizeDrawingCanvas(drawingState.camera));
+    if (!state.cameraAutoStarted) {
+      state.cameraAutoStarted = true;
+      refreshCameraDevices().then(() => startCamera(state.cameraDeviceId));
+    }
+  }
+
+  /* ---------------- 白板 ---------------- */
+
+  function renderWhiteboard() {
+    initDrawingBoard(drawingState.whiteboard);
+    requestAnimationFrame(() => resizeDrawingCanvas(drawingState.whiteboard));
+  }
+
+  async function saveWhiteboardImage() {
+    const canvas = $('#whiteboardCanvas');
+    if (!canvas) return;
+    const output = document.createElement('canvas');
+    output.width = canvas.width;
+    output.height = canvas.height;
+    const ctx = output.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, output.width, output.height);
+    ctx.drawImage(canvas, 0, 0);
+    const result = await api.savePng({
+      dataUrl: output.toDataURL('image/png'),
+      defaultName: `白板_${todayStamp()}.png`
+    });
+    if (result && result.ok && !result.canceled) {
+      showToast(`白板已保存：${result.filePath}`, { type: 'success', title: '保存成功' });
+    } else if (result && result.error) {
+      showToast(result.error, { type: 'error', title: '保存失败' });
+    }
+  }
+
+  /* ---------------- 课程表事件 ---------------- */
+
+  async function addTimetablePeriod() {
+    collectTimetableFromDom();
+    if (state.timetable.periods.length >= 12) {
+      showToast('课程表最多 12 节。', { type: 'warn' });
+      return;
+    }
+    state.timetable.periods.push({
+      id: `p${Date.now().toString(36)}`,
+      label: `第${state.timetable.periods.length + 1}节`,
+      time: '', mon: '', tue: '', wed: '', thu: '', fri: '',
+      satA: '', satB: '', sunA: '', sunB: ''
+    });
+    renderTimetable();
+    markTimetableDirty();
+  }
+
+  function removeTimetablePeriod(index) {
+    collectTimetableFromDom();
+    state.timetable.periods.splice(index, 1);
+    renderTimetable();
+    markTimetableDirty();
+  }
+
+  function switchTimetableWeek(week) {
+    collectTimetableFromDom();
+    state.timetableWeek = week === 'B' ? 'B' : 'A';
+    renderTimetable();
+    markTimetableDirty();
+  }
+
+  /* ---------------- 内置浏览器 ---------------- */
+
+  function browserWebview() {
+    return $('#siteWebview');
+  }
+
+  function updateBrowserCredentialUi() {
+    const credentials = state.browserCredentials;
+    const usernameInput = $('#browserUsername');
+    const status = $('#browserCredentialStatus');
+    if (usernameInput && document.activeElement !== usernameInput) usernameInput.value = credentials?.username || '';
+    if (status) {
+      if (credentials?.username) {
+        status.textContent = `已保存账号：${credentials.username}${credentials.savedAt ? ` · ${formatDateTime(credentials.savedAt)}` : ''}`;
+      } else {
+        status.textContent = '尚未保存登录账号';
+      }
+    }
+  }
+
+  async function loadBrowserCredentialState() {
+    try {
+      const result = await api.browserCredentials.get();
+      state.browserCredentials = result?.ok ? result : null;
+      updateBrowserCredentialUi();
+    } catch (error) {
+      state.browserCredentials = null;
+      updateBrowserCredentialUi();
+    }
+  }
+
+  async function fillBrowserCredentials(manual) {
+    const credentials = state.browserCredentials;
+    if (!credentials?.username || !credentials?.password) {
+      if (manual) showToast('还没有保存账号密码，请先在右侧保存。', { type: 'warn' });
+      return false;
+    }
+    const webview = browserWebview();
+    if (!webview) return false;
+    const script = `(() => {
+      const username = ${JSON.stringify(credentials.username)};
+      const password = ${JSON.stringify(credentials.password)};
+      const visible = (el) => !!el && !el.disabled && el.type !== 'hidden' && (el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+      const passwordInput = Array.from(document.querySelectorAll('input[type="password"]')).find(visible);
+      if (!passwordInput) return { ok: false, reason: 'no-password-field' };
+      const form = passwordInput.form || passwordInput.closest('form') || document;
+      const candidates = Array.from(form.querySelectorAll('input[type="text"],input[type="email"],input[type="tel"],input:not([type])')).filter(visible);
+      const usernameInput = candidates.find((input) => /user|account|email|phone|mobile|login|name|id/i.test([input.name, input.id, input.placeholder, input.autocomplete].join(' ')))
+        || candidates.filter((input) => (input.compareDocumentPosition(passwordInput) & Node.DOCUMENT_POSITION_FOLLOWING)).pop()
+        || candidates[0];
+      const setValue = (input, value) => {
+        if (!input) return;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(input, value); else input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      setValue(usernameInput, username);
+      setValue(passwordInput, password);
+      return { ok: true, filledUser: Boolean(usernameInput), filledPassword: true };
+    })()`;
+    try {
+      const result = await webview.executeJavaScript(script, true);
+      if (manual) {
+        if (result?.ok) showToast('已自动填充账号密码。', { type: 'success', title: '自动填充完成' });
+        else showToast('当前页面没有找到登录密码框，请先打开登录页。', { type: 'warn' });
+      }
+      return Boolean(result?.ok);
+    } catch (error) {
+      if (manual) showToast('自动填充失败，请确认网页已经加载完成。', { type: 'warn' });
+      return false;
+    }
+  }
+
+  async function saveBrowserCredentialsFromForm() {
+    const username = String($('#browserUsername')?.value || '').trim();
+    const passwordInput = $('#browserPassword');
+    const password = String(passwordInput?.value || '');
+    if (!username) {
+      showToast('请填写登录账号。', { type: 'warn' });
+      return;
+    }
+    const existingPassword = state.browserCredentials?.password || '';
+    if (!password && !existingPassword) {
+      showToast('请填写登录密码。', { type: 'warn' });
+      return;
+    }
+    const result = await api.browserCredentials.save({
+      username,
+      password: password || existingPassword
+    });
+    if (!result?.ok) {
+      showToast(result?.error || '保存账号失败', { type: 'error' });
+      return;
+    }
+    state.browserCredentials = {
+      ok: true,
+      username,
+      password: password || existingPassword,
+      savedAt: result.savedAt
+    };
+    if (passwordInput) passwordInput.value = '';
+    updateBrowserCredentialUi();
+    showToast('账号密码已加密保存在本机。', { type: 'success', title: '保存成功' });
+    fillBrowserCredentials(false);
+  }
+
+  function setupBrowserOnce() {
+    if (state.browserInitialized) return;
+    const webview = browserWebview();
+    if (!webview) return;
+    state.browserInitialized = true;
+    if (!webview.getAttribute('src')) webview.setAttribute('src', 'https://zz8zszy.cn/');
+    const loading = $('#browserLoading');
+    const showLoading = () => {
+      if (loading) {
+        loading.classList.remove('is-hidden');
+        loading.innerHTML = '<span class="spinner"></span>正在打开 zz8zszy.cn…';
+      }
+    };
+    const hideLoading = () => loading?.classList.add('is-hidden');
+    webview.addEventListener('did-start-loading', showLoading);
+    webview.addEventListener('dom-ready', () => {
+      hideLoading();
+      fillBrowserCredentials(false);
+      window.setTimeout(() => fillBrowserCredentials(false), 1400);
+    });
+    webview.addEventListener('did-finish-load', hideLoading);
+    webview.addEventListener('did-stop-loading', hideLoading);
+    webview.addEventListener('did-fail-load', (event) => {
+      if (event.errorCode === -3 || event.isMainFrame === false) return;
+      if (loading) {
+        loading.classList.remove('is-hidden');
+        loading.innerHTML = `<span>${icon('alert')}</span><span>网页加载失败，请检查网络后点击刷新。</span>`;
+      }
+    });
+    loadBrowserCredentialState();
+  }
+
+  function renderBrowser() {
+    setupBrowserOnce();
+    updateBrowserCredentialUi();
+  }
+
+  function browserNavigate(action) {
+    const webview = browserWebview();
+    if (!webview) return;
+    try {
+      if (action === 'back' && webview.canGoBack()) webview.goBack();
+      else if (action === 'forward' && webview.canGoForward()) webview.goForward();
+      else if (action === 'reload') webview.reload();
+    } catch (error) {
+      showToast('浏览器操作失败', { type: 'error' });
+    }
+  }
+
+  /* ---------------- U 盘检测 ---------------- */
+
+  function formatDriveSize(bytes) {
+    return formatSize(Number(bytes) || 0);
+  }
+
+  function renderUsbDrives() {
+    const select = $('#usbDriveSelect');
+    const meta = $('#usbDriveMeta');
+    if (!select) return;
+    if (!state.usbDrives.length) {
+      select.innerHTML = '<option value="">未检测到可移动磁盘</option>';
+      if (meta) meta.textContent = '请插入 U 盘后点击右上角「刷新磁盘」。';
+      return;
+    }
+    const current = select.value;
+    select.innerHTML = state.usbDrives.map((drive) => (
+      `<option value="${attr(drive.root)}"${current === drive.root ? ' selected' : ''}>${esc(drive.letter)} ${esc(drive.name)} · ${formatDriveSize(drive.size)}</option>`
+    )).join('');
+    if (!select.value) select.value = state.usbDrives[0].root;
+    const selected = state.usbDrives.find((drive) => drive.root === select.value) || state.usbDrives[0];
+    if (meta) meta.textContent = `${selected.letter} ${selected.name} · 已用 ${formatDriveSize(selected.size - selected.free)} / 共 ${formatDriveSize(selected.size)} · 可用 ${formatDriveSize(selected.free)}`;
+  }
+
+  function renderUsbFindings() {
+    const container = $('#usbFindings');
+    const count = $('#usbFindingCount');
+    if (!container) return;
+    const result = state.usbScanResult;
+    if (!result) {
+      if (count) count.textContent = '0 项';
+      container.innerHTML = `<div class="question-empty">${icon('shield')}<strong>等待检测</strong><p>选择一个 U 盘并点击「开始安全检测」，结果会显示在这里。</p></div>`;
+      return;
+    }
+    if (count) count.textContent = `${result.findings.length} 项`;
+    const summary = `<div class="usb-summary">${icon('shield')}<span>已检查 ${result.scanned} 个文件${result.truncated ? '（文件过多，已提前结束）' : ''}，发现 ${result.findings.length} 个需要关注的项目。</span></div>`;
+    if (!result.findings.length) {
+      container.innerHTML = summary + `<div class="question-empty">${icon('checkCircle')}<strong>未发现明显可疑文件</strong><p>基础特征检测通过。如需更严格检查，可点击「Windows Defender」进行完整扫描。</p></div>`;
+      return;
+    }
+    const severityText = { high: '高风险', medium: '需确认', low: '低风险' };
+    container.innerHTML = summary + result.findings.map((finding) => `<div class="usb-finding ${finding.severity === 'high' ? 'is-high' : finding.severity === 'low' ? 'is-low' : ''}">
+      <span class="usb-finding-severity"></span>
+      <div class="usb-finding-main">
+        <div class="usb-finding-head"><span class="usb-severity-tag">${severityText[finding.severity] || '提示'}</span><span class="usb-finding-name" title="${attr(finding.name)}">${esc(finding.name)}</span></div>
+        <p class="usb-finding-path" title="${attr(finding.path)}">${esc(finding.path)}</p>
+        <p class="usb-finding-reason">${esc(finding.reason)}</p>
+      </div>
+      <div class="usb-finding-actions"><button type="button" data-usb-reveal="${attr(finding.path)}">打开位置</button></div>
+    </div>`).join('');
+  }
+
+  async function refreshUsbDrives() {
+    if (state.usbLoading) return;
+    state.usbLoading = true;
+    const button = $('#refreshUsbDrives');
+    if (button) button.disabled = true;
+    try {
+      const result = await api.usb.list();
+      state.usbDrives = Array.isArray(result?.drives) ? result.drives : [];
+      renderUsbDrives();
+      renderUsbFindings();
+      if (result && !result.ok) showToast(result.error || '读取可移动磁盘失败', { type: 'warn' });
+    } catch (error) {
+      showToast('读取可移动磁盘失败', { type: 'error' });
+    } finally {
+      state.usbLoading = false;
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function startUsbScan() {
+    if (state.usbScanning) return;
+    const root = $('#usbDriveSelect')?.value;
+    if (!root) {
+      showToast('请先插入并选择一个 U 盘。', { type: 'warn' });
+      return;
+    }
+    state.usbScanning = true;
+    state.usbScanResult = null;
+    const status = $('#usbScanStatus');
+    const button = $('#scanUsbButton');
+    if (status) status.textContent = '正在扫描文件，请稍候…';
+    if (button) { button.disabled = true; button.innerHTML = '<span class="spinner"></span>扫描中…'; }
+    try {
+      const result = await api.usb.scan(root);
+      if (!result?.ok) {
+        if (status) status.textContent = result?.error || '扫描失败';
+        showToast(result?.error || '扫描失败', { type: 'error' });
+        return;
+      }
+      state.usbScanResult = result;
+      renderUsbFindings();
+      if (status) status.textContent = `扫描完成：检查 ${result.scanned} 个文件，发现 ${result.findings.length} 个需要关注的项目。`;
+      showToast(result.findings.length ? `发现 ${result.findings.length} 个需要确认的项目。` : '未发现明显可疑文件。', {
+        type: result.findings.length ? 'warn' : 'success',
+        title: 'U 盘检测完成'
+      });
+    } catch (error) {
+      if (status) status.textContent = '扫描失败';
+      showToast(error?.message || '扫描失败', { type: 'error' });
+    } finally {
+      state.usbScanning = false;
+      if (button) { button.disabled = false; button.innerHTML = '<span data-icon="search"></span>开始安全检测'; ICONS.hydrateIcons(button); }
+    }
+  }
+
+  function askDefenderScan() {
+    const root = $('#usbDriveSelect')?.value;
+    if (!root) {
+      showToast('请先插入并选择一个 U 盘。', { type: 'warn' });
+      return;
+    }
+    openConfirm({
+      title: '调用 Windows Defender 扫描？',
+      message: '将调用本机 Windows Defender 对所选 U 盘进行完整扫描，可能需要较长时间，扫描期间请勿拔出 U 盘。',
+      confirmText: '开始扫描',
+      onConfirm: async () => {
+        const status = $('#usbScanStatus');
+        if (status) status.textContent = 'Windows Defender 正在扫描，请稍候…';
+        const result = await api.usb.defenderScan(root);
+        if (result?.ok) {
+          if (status) status.textContent = 'Windows Defender 扫描完成。';
+          showToast('Windows Defender 扫描完成，请查看系统安全中心结果。', { type: 'success', title: '扫描完成' });
+        } else {
+          if (status) status.textContent = 'Windows Defender 扫描失败。';
+          showToast(result?.error || 'Windows Defender 扫描失败', { type: 'error' });
+        }
+      }
+    });
+  }
+
+  function renderUsb() {
+    if (!state.usbDrives.length) {
+      const select = $('#usbDriveSelect');
+      const meta = $('#usbDriveMeta');
+      if (select) select.innerHTML = '<option value="">正在检测可移动磁盘…</option>';
+      if (meta) meta.textContent = '正在检测已连接的 U 盘…';
+      if (!state.usbLoading) refreshUsbDrives();
+    } else {
+      renderUsbDrives();
+    }
+    renderUsbFindings();
+  }
+
+  /* ---------------- 检查更新 ---------------- */
+
+  function openUpdateModal(info) {
+    state.modal = 'update';
+    state.updateInfo = info;
+    const notes = info.notes ? `<div class="update-notes">${esc(info.notes).replace(/\n/g, '<br>')}</div>` : '';
+    ui.modalLayer.innerHTML = `<div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
+      <header class="modal-header">
+        <span class="modal-icon">${icon('refresh')}</span>
+        <div class="modal-heading"><h2 id="updateTitle">发现新版本</h2><p>当前 v${esc(info.currentVersion)} → 最新 v${esc(info.latestVersion)}</p></div>
+        <button type="button" class="icon-button" data-close-modal aria-label="关闭">${icon('close')}</button>
+      </header>
+      <div class="modal-body">
+        <div class="update-version-row"><span>当前版本</span><strong>v${esc(info.currentVersion)}</strong><span>最新版本</span><strong class="is-new">v${esc(info.latestVersion)}</strong></div>
+        ${notes}
+        ${info.assetUrl ? '<div class="batch-save-info">' + icon('info') + '点击「下载并打开安装包」会下载最新的 Windows 安装包并启动安装程序。安装前请保存当前工作。</div>' : '<div class="batch-save-info">' + icon('info') + '该版本没有可用的安装包附件，请打开发布页查看。</div>'}
+      </div>
+      <footer class="modal-footer">
+        <span class="modal-footer-note">${icon('shield')}更新来自 GitHub Release</span>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn btn-light" data-update-release>打开发布页</button>
+          ${info.assetUrl ? '<button type="button" class="btn btn-primary" id="updateDownloadButton">下载并打开安装包</button>' : ''}
+        </div>
+      </footer>
+    </div>`;
+    ui.modalLayer.hidden = false;
+  }
+
+  async function checkForUpdates() {
+    if (state.updateChecking) return;
+    state.updateChecking = true;
+    const buttons = [$('#checkUpdateButton'), $('#checkUpdateDataButton')];
+    buttons.forEach((button) => { if (button) button.disabled = true; });
+    showToast('正在检查 GitHub 上的最新版本…', { type: 'info', duration: 2000 });
+    try {
+      const result = await api.checkUpdate();
+      if (!result?.ok) {
+        showToast(result?.error || '无法连接 GitHub 检查更新', { type: 'error', title: '检查更新失败', duration: 7000 });
+        return;
+      }
+      if (result.isLatest) {
+        showToast(`当前版本 v${result.currentVersion} 已是最新版本。`, { type: 'success', title: '已是最新版本' });
+      } else if (result.updateAvailable) {
+        openUpdateModal(result);
+      } else {
+        showToast(`当前版本 v${result.currentVersion} 高于 GitHub 最新版本 v${result.latestVersion}，可能尚未发布。`, {
+          type: 'warn',
+          title: '版本尚未发布',
+          duration: 7000
+        });
+      }
+    } catch (error) {
+      showToast(error?.message || '检查更新失败', { type: 'error' });
+    } finally {
+      state.updateChecking = false;
+      buttons.forEach((button) => { if (button) button.disabled = false; });
+    }
+  }
+
+  async function downloadAndInstallUpdate() {
+    const button = $('#updateDownloadButton');
+    if (!button || state.updateDownloading) return;
+    const info = state.updateInfo;
+    if (!info?.assetUrl) return;
+    state.updateDownloading = true;
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner"></span>正在下载…';
+    try {
+      const result = await api.downloadUpdate({ url: info.assetUrl, name: info.assetName });
+      if (!result?.ok) {
+        showToast(result?.error || '下载更新失败', { type: 'error', title: '下载失败' });
+        button.disabled = false;
+        button.textContent = '下载并打开安装包';
+        return;
+      }
+      showToast(`安装包已保存：${result.filePath}`, { type: 'success', title: '下载完成', duration: 7000 });
+      button.innerHTML = '正在打开安装包…';
+      const launched = await api.launchInstaller(result.filePath);
+      if (launched?.ok) {
+        closeModal();
+      } else {
+        button.disabled = false;
+        button.textContent = '重新打开安装包';
+        showToast(launched?.error || '无法打开安装包', { type: 'warn' });
+      }
+    } catch (error) {
+      showToast(error?.message || '下载失败', { type: 'error' });
+      button.disabled = false;
+      button.textContent = '下载并打开安装包';
+    } finally {
+      state.updateDownloading = false;
+    }
+  }
+
+  function bindClassroomToolEvents() {
+    const checkUpdateButton = $('#checkUpdateButton');
+    if (checkUpdateButton) checkUpdateButton.addEventListener('click', checkForUpdates);
+    const checkUpdateDataButton = $('#checkUpdateDataButton');
+    if (checkUpdateDataButton) checkUpdateDataButton.addEventListener('click', checkForUpdates);
+
+    $$('[data-browser-back]').forEach((button) => button.addEventListener('click', () => browserNavigate('back')));
+    $$('[data-browser-forward]').forEach((button) => button.addEventListener('click', () => browserNavigate('forward')));
+    $$('[data-browser-reload]').forEach((button) => button.addEventListener('click', () => browserNavigate('reload')));
+    $$('[data-browser-external]').forEach((button) => button.addEventListener('click', async () => {
+      const webview = browserWebview();
+      const url = webview?.getURL?.() || 'https://zz8zszy.cn';
+      if (/^https?:/i.test(url)) await api.openExternal(url);
+    }));
+    const saveBrowserButton = $('#saveBrowserCredentials');
+    if (saveBrowserButton) saveBrowserButton.addEventListener('click', saveBrowserCredentialsFromForm);
+    const fillBrowserButton = $('#fillBrowserCredentials');
+    if (fillBrowserButton) fillBrowserButton.addEventListener('click', () => fillBrowserCredentials(true));
+    const clearBrowserButton = $('#clearBrowserCredentials');
+    if (clearBrowserButton) {
+      clearBrowserButton.addEventListener('click', async () => {
+        const result = await api.browserCredentials.clear();
+        if (result?.ok) {
+          state.browserCredentials = null;
+          const username = $('#browserUsername');
+          const password = $('#browserPassword');
+          if (username) username.value = '';
+          if (password) password.value = '';
+          updateBrowserCredentialUi();
+          showToast('已清除保存的登录账号。', { type: 'success' });
+        } else {
+          showToast(result?.error || '清除失败', { type: 'error' });
+        }
+      });
+    }
+
+    const cameraStartButton = $('#cameraStart');
+    if (cameraStartButton) cameraStartButton.addEventListener('click', () => startCamera($('#cameraDeviceSelect')?.value || ''));
+    const cameraStopButton = $('#cameraStop');
+    if (cameraStopButton) cameraStopButton.addEventListener('click', stopCamera);
+    const cameraDeviceSelect = $('#cameraDeviceSelect');
+    if (cameraDeviceSelect) cameraDeviceSelect.addEventListener('change', () => startCamera(cameraDeviceSelect.value));
+    const cameraFullscreen = $('#cameraFullscreen');
+    if (cameraFullscreen) {
+      cameraFullscreen.addEventListener('click', () => {
+        const stage = $('#cameraStage');
+        if (stage?.requestFullscreen) stage.requestFullscreen().catch(() => showToast('无法进入全屏', { type: 'warn' }));
+      });
+    }
+    const cameraPenWidth = $('#cameraPenWidth');
+    if (cameraPenWidth) {
+      cameraPenWidth.addEventListener('input', () => { drawingState.camera.width = Number(cameraPenWidth.value) || 4; });
+    }
+    const whiteboardPenWidth = $('#whiteboardPenWidth');
+    if (whiteboardPenWidth) {
+      whiteboardPenWidth.addEventListener('input', () => { drawingState.whiteboard.width = Number(whiteboardPenWidth.value) || 5; });
+    }
+    const whiteboardFullscreen = $('#whiteboardFullscreen');
+    if (whiteboardFullscreen) {
+      whiteboardFullscreen.addEventListener('click', () => {
+        const stage = $('#whiteboardStage');
+        if (stage?.requestFullscreen) stage.requestFullscreen().catch(() => showToast('无法进入全屏', { type: 'warn' }));
+      });
+    }
+    const whiteboardSave = $('#whiteboardSave');
+    if (whiteboardSave) whiteboardSave.addEventListener('click', saveWhiteboardImage);
+
+    const addPeriod = $('#addTimetablePeriod');
+    if (addPeriod) addPeriod.addEventListener('click', addTimetablePeriod);
+    const saveTimetableButton = $('#saveTimetableButton');
+    if (saveTimetableButton) saveTimetableButton.addEventListener('click', saveTimetable);
+    const weekSwitch = $('#timetableWeekSwitch');
+    if (weekSwitch) {
+      weekSwitch.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-timetable-week]');
+        if (button) switchTimetableWeek(button.dataset.timetableWeek);
+      });
+    }
+    const timetableTable = $('#timetableTable');
+    if (timetableTable) {
+      timetableTable.addEventListener('input', markTimetableDirty);
+      timetableTable.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-timetable-remove]');
+        if (button) removeTimetablePeriod(Number(button.dataset.timetableRemove));
+      });
+    }
+
+    const refreshUsb = $('#refreshUsbDrives');
+    if (refreshUsb) refreshUsb.addEventListener('click', refreshUsbDrives);
+    const scanUsb = $('#scanUsbButton');
+    if (scanUsb) scanUsb.addEventListener('click', startUsbScan);
+    const defenderUsb = $('#defenderUsbButton');
+    if (defenderUsb) defenderUsb.addEventListener('click', askDefenderScan);
+    const usbSelect = $('#usbDriveSelect');
+    if (usbSelect) usbSelect.addEventListener('change', renderUsbDrives);
+    const usbFindings = $('#usbFindings');
+    if (usbFindings) {
+      usbFindings.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-usb-reveal]');
+        if (button) api.revealFile(button.dataset.usbReveal);
+      });
+    }
+
+    document.addEventListener('fullscreenchange', () => {
+      requestAnimationFrame(() => {
+        resizeDrawingCanvas(drawingState.camera);
+        resizeDrawingCanvas(drawingState.whiteboard);
+      });
+    });
+  }
+
   function renderAll() {
     renderChrome();
     renderLibrary();
@@ -1344,6 +2302,11 @@
     if (state.page === 'types') renderTypes();
     if (state.page === 'vocab') renderVocab();
     if (state.page === 'questions') renderQuestions();
+    if (state.page === 'browser') renderBrowser();
+    if (state.page === 'camera') renderCamera();
+    if (state.page === 'whiteboard') renderWhiteboard();
+    if (state.page === 'timetable') renderTimetable();
+    if (state.page === 'usb') renderUsb();
     if (state.page === 'data') renderData();
   }
 
@@ -2389,6 +3352,8 @@
     state.batchDeleteItems = [];
     state.batchDeleteSelected = new Set();
     state.batchDeleteBusy = false;
+    state.updateInfo = null;
+    state.updateDownloading = false;
     ui.modalLayer.hidden = true;
     ui.modalLayer.innerHTML = '';
   }
@@ -2470,7 +3435,15 @@
             <li><strong>英语 3500</strong>：在左侧「学习工具 → 英语 3500」中按英文、中文或音标查询，支持 A—Z 首字母浏览。</li>
             <li><strong>学科提问</strong>：在左侧「学习工具 → 学科提问」中发布待讲题目、填写票数或投票 +1；可按票数排序，讲完后标记已讲解。</li>
           </ul>
-          <div class="help-tip">建议定期在「数据管理」中导出数据备份。备份包含课件索引、学科提问与分类信息，不包含课件原文件。</div>
+          <h3>课堂工具</h3>
+          <ul class="help-list">
+            <li><strong>内置浏览器</strong>：固定打开 zz8zszy.cn，可在右侧加密保存账号密码，登录页自动填充。</li>
+            <li><strong>展台 / 白板</strong>：自动连接摄像头并可全屏投放，支持多色批画、橡皮；白板可保存 PNG。</li>
+            <li><strong>课程表</strong>：直接修改节次、时间和课程，周六/周日可切换 A 表/B 表。</li>
+            <li><strong>U 盘检测</strong>：检查可疑可执行文件、伪装文档和 autorun 项，也可调用 Windows Defender。</li>
+            <li><strong>检查更新</strong>：右上角刷新图标，或「数据管理 → 关于系统 → 检查更新」。</li>
+          </ul>
+          <div class="help-tip">建议定期在「数据管理」中导出数据备份。备份包含课件索引、学科提问、课程表与分类信息，不包含课件原文件。</div>
           <div class="help-team">
             <img src="../assets/school-badge.png" alt="枣庄八中校徽">
             <div class="help-team-copy">
@@ -2533,6 +3506,7 @@
       const result = await api.saveLibrary({
         items: state.items,
         questions: state.questions,
+        timetable: state.timetable,
         settings: state.settings
       });
       if (!result || !result.ok) throw new Error(result?.error || '保存失败');
@@ -2585,6 +3559,7 @@
     clearTimeout(searchTimer);
     searchTimer = 0;
     if (!PAGE_TITLES[page]) page = 'library';
+    if (state.page === 'camera' && page !== 'camera') stopCamera();
     state.page = page;
     ui.pagePanels.forEach((panel) => {
       panel.hidden = panel.dataset.panel !== page;
@@ -2596,6 +3571,11 @@
     if (page === 'types') renderTypes();
     if (page === 'vocab') renderVocab();
     if (page === 'questions') renderQuestions();
+    if (page === 'browser') renderBrowser();
+    if (page === 'camera') renderCamera();
+    if (page === 'whiteboard') renderWhiteboard();
+    if (page === 'timetable') renderTimetable();
+    if (page === 'usb') renderUsb();
     if (page === 'data') renderData();
     if (!options || options.scroll !== false) ui.mainScroll.scrollTop = 0;
   }
@@ -2699,12 +3679,13 @@
   async function exportJson() {
     const backup = {
       app: '枣庄八中高中课件管理系统',
-      formatVersion: 2,
+      formatVersion: 3,
       school: '枣庄市第八中学',
       exportedAt: new Date().toISOString(),
       settings: { ...state.settings, initialized: true },
       items: state.items,
-      questions: state.questions
+      questions: state.questions,
+      timetable: state.timetable
     };
     const result = await api.saveText({
       title: '导出课件库数据备份',
@@ -2789,6 +3770,8 @@
     const backupItems = sanitizeBackupItems(parsed.items);
     const hasBackupQuestions = Array.isArray(parsed.questions);
     const backupQuestions = hasBackupQuestions ? sanitizeBackupQuestions(parsed.questions) : state.questions.slice();
+    const hasBackupTimetable = Boolean(parsed.timetable && Array.isArray(parsed.timetable.periods));
+    const backupTimetable = normalizeClientTimetable(parsed.timetable);
     const questionMessage = hasBackupQuestions
       ? `备份中的 <strong>${backupQuestions.length}</strong> 条学科提问`
       : `当前 <strong>${backupQuestions.length}</strong> 条学科提问（旧备份未包含）`;
@@ -2800,6 +3783,7 @@
       onConfirm: async () => {
         state.items = backupItems;
         state.questions = backupQuestions;
+        if (hasBackupTimetable) state.timetable = backupTimetable;
         state.questionVoteEditId = '';
         state.settings = {
           ...(parsed.settings || {}),
@@ -3056,6 +4040,23 @@
       return;
     }
 
+    const drawColorButton = event.target.closest('[data-draw-color]');
+    if (drawColorButton && (state.page === 'camera' || state.page === 'whiteboard')) {
+      setDrawingColor(drawColorButton.dataset.drawColor);
+      return;
+    }
+
+    const eraserButton = event.target.closest('[data-draw-tool="eraser"]');
+    if (eraserButton && (state.page === 'camera' || state.page === 'whiteboard')) {
+      setEraser(!activeDrawingState().eraser);
+      return;
+    }
+
+    if (event.target.closest('[data-draw-clear]') && (state.page === 'camera' || state.page === 'whiteboard')) {
+      clearDrawing(activeDrawingState());
+      return;
+    }
+
     const vocabLetterButton = event.target.closest('[data-vocab-letter]');
     if (vocabLetterButton) {
       state.vocabLetter = vocabLetterButton.dataset.vocabLetter || '';
@@ -3202,6 +4203,7 @@
   function bindEvents() {
     document.addEventListener('click', handleDocumentClick);
     bindQuestionEvents();
+    bindClassroomToolEvents();
 
     ui.search.addEventListener('input', () => {
       const value = ui.search.value;
@@ -3359,7 +4361,7 @@
 
     ui.modalLayer.addEventListener('click', (event) => {
       if (event.target === ui.modalLayer) {
-        if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy) return;
+        if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy || state.updateDownloading) return;
         if ($('#confirmActionButton')?.disabled) return;
         closeModal();
         return;
@@ -3376,9 +4378,18 @@
         return;
       }
       if (event.target.closest('[data-close-modal]')) {
-        if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy) return;
+        if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy || state.updateDownloading) return;
         if ($('#confirmActionButton')?.disabled) return;
         closeModal();
+        return;
+      }
+      if (event.target.closest('[data-update-release]')) {
+        const url = state.updateInfo?.releaseUrl;
+        if (url) api.openExternal(url);
+        return;
+      }
+      if (event.target.closest('#updateDownloadButton')) {
+        downloadAndInstallUpdate();
         return;
       }
       if (event.target.closest('#batchSaveConfirmButton')) {
@@ -3511,6 +4522,7 @@
           questionSearch?.select();
           return;
         }
+        if (TOOL_PAGES.has(state.page)) return;
         if (ui.searchBox) ui.searchBox.hidden = false;
         ui.search.focus();
         ui.search.select();
@@ -3518,7 +4530,7 @@
       }
       if (event.key === 'Escape') {
         if (!ui.modalLayer.hidden) {
-          if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy) return;
+          if (state.importBusy || state.importScanning || state.batchSaveBusy || state.batchDeleteBusy || state.updateDownloading) return;
           if ($('#confirmActionButton')?.disabled) return;
           closeModal();
           return;
@@ -3590,6 +4602,7 @@
       if (!result || !result.ok) throw new Error(result?.error || '无法读取本机课件库');
       state.items = Array.isArray(result.items) ? result.items.filter((item) => item && item.id && item.name) : [];
       state.questions = Array.isArray(result.questions) ? result.questions.filter((q) => q && q.id && q.title) : [];
+      state.timetable = normalizeClientTimetable(result.timetable);
       state.settings = result.settings && typeof result.settings === 'object' ? result.settings : {};
       state.dataPath = result.libraryPath || result.dataDir || '';
       if (!state.settings.initialized && state.items.length === 0) {
