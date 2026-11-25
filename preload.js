@@ -35,6 +35,26 @@ contextBridge.exposeInMainWorld('zzbz', {
   openDataDir: () => ipcRenderer.invoke('app:open-data-dir'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
   importStudents: (filePath) => ipcRenderer.invoke('students:import', filePath),
+  ai: {
+    status: () => ipcRenderer.invoke('ai:key-status'),
+    saveKey: (key) => ipcRenderer.invoke('ai:save-key', key),
+    clearKey: () => ipcRenderer.invoke('ai:clear-key'),
+    ask: (question) => ipcRenderer.invoke('ai:ask', question)
+  },
+  startPhoneCast: () => ipcRenderer.invoke('phone:start'),
+  stopPhoneCast: () => ipcRenderer.invoke('phone:stop'),
+  phoneCastStatus: () => ipcRenderer.invoke('phone:status'),
+  openBluetoothSettings: () => ipcRenderer.invoke('app:open-bluetooth-settings'),
+  onPhoneFrame: (callback) => {
+    const handler = (_event, dataUrl) => callback(dataUrl);
+    ipcRenderer.on('phone:frame', handler);
+    return () => ipcRenderer.removeListener('phone:frame', handler);
+  },
+  onUpdateProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('update:progress', handler);
+    return () => ipcRenderer.removeListener('update:progress', handler);
+  },
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
   downloadUpdate: (payload) => ipcRenderer.invoke('app:download-update', payload),
   launchInstaller: (filePath) => ipcRenderer.invoke('app:launch-installer', filePath),

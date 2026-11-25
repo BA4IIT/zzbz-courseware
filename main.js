@@ -1,15 +1,21 @@
-'use strict';
+﻿'use strict';
 
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage } = require('electron');
 const archiver = require('archiver');
 const XLSX = require('xlsx');
+const QRCode = require('qrcode');
+const { WebSocketServer } = require('ws');
+const selfsigned = require('selfsigned');
+const https = require('node:https');
+const os = require('node:os');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { Readable } = require('node:stream');
+const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const execFileAsync = promisify(execFile);
 
@@ -44,8 +50,8 @@ try {
   }
 }
 
-const APP_NAME = '枣庄八中高中课件管理系统';
-const APP_VERSION = '1.5.0';
+const APP_NAME = '枣庄八中集成桌面教学系统';
+const APP_VERSION = '1.6.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -644,6 +650,24 @@ function parseStudentSheet(filePath) {
   return students;
 }
 
+function normalizeWordGameScores(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 500).map((entry) => {
+    if (!entry || typeof entry !== 'object') return null;
+    const nickname = normalizeString(entry.nickname, 24);
+    const total = Math.max(1, Math.min(1000, Math.floor(Number(entry.total) || 0)));
+    const correct = Math.max(0, Math.min(total, Math.floor(Number(entry.correct) || 0)));
+    if (!nickname || !total) return null;
+    return {
+      nickname,
+      total,
+      correct,
+      duration: Math.max(0, Math.min(86400, Math.floor(Number(entry.duration) || 0))),
+      date: normalizeString(entry.date, 40)
+    };
+  }).filter(Boolean);
+}
+
 function normalizeLibrary(payload) {
   const rawItems = payload && Array.isArray(payload.items) ? payload.items : [];
   const items = rawItems.map(normalizeItem).filter(Boolean).slice(0, 20000);
@@ -651,7 +675,7 @@ function normalizeLibrary(payload) {
   const questions = rawQuestions.map(normalizeQuestion).filter(Boolean).slice(0, 5000);
   const rawSettings = payload && payload.settings && typeof payload.settings === 'object' ? payload.settings : {};
   return {
-    version: 4,
+    version: 5,
     school: '枣庄市第八中学',
     updatedAt: new Date().toISOString(),
     settings: {
@@ -664,7 +688,8 @@ function normalizeLibrary(payload) {
     questions,
     timetable: normalizeTimetable(payload && payload.timetable),
     subjectVotes: normalizeSubjectVotes(payload && payload.subjectVotes),
-    students: normalizeStudents(payload && payload.students)
+    students: normalizeStudents(payload && payload.students),
+    wordGameScores: normalizeWordGameScores(payload && payload.wordGameScores)
   };
 }
 
@@ -679,6 +704,7 @@ async function loadLibrary() {
       timetable: normalizeTimetable(parsed.timetable),
       subjectVotes: normalizeSubjectVotes(parsed.subjectVotes),
       students: normalizeStudents(parsed.students),
+      wordGameScores: normalizeWordGameScores(parsed.wordGameScores),
       settings: parsed.settings || {},
       updatedAt: parsed.updatedAt || '',
       dataDir: getDataDir(),
@@ -693,6 +719,7 @@ async function loadLibrary() {
         timetable: defaultTimetable(),
         subjectVotes: {},
         students: [],
+        wordGameScores: [],
         settings: {},
         updatedAt: '',
         dataDir: getDataDir(),
@@ -713,6 +740,7 @@ async function loadLibrary() {
       timetable: defaultTimetable(),
       subjectVotes: {},
       students: [],
+      wordGameScores: [],
       settings: {},
       updatedAt: '',
       dataDir: getDataDir(),
@@ -721,6 +749,174 @@ async function loadLibrary() {
       backupPath
     };
   }
+}
+
+function getAiKeyPath() {
+  return path.join(getDataDir(), 'deepseek-key.dat');
+}
+
+async function readAiKey() {
+  try {
+    const encoded = await fsp.readFile(getAiKeyPath(), 'utf8');
+    if (!encoded) return { ok: true, key: '' };
+    if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: '当前系统不支持安全密钥存储' };
+    return { ok: true, key: safeStorage.decryptString(Buffer.from(encoded, 'base64')) };
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return { ok: true, key: '' };
+    return { ok: false, error: '读取 DeepSeek API Key 失败' };
+  }
+}
+
+async function saveAiKey(rawKey) {
+  const key = normalizeString(rawKey, 300);
+  if (!key) return { ok: false, error: 'API Key 不能为空' };
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: '当前系统不支持安全密钥存储' };
+  await ensureDataDir();
+  const encrypted = safeStorage.encryptString(key).toString('base64');
+  await atomicWrite(getAiKeyPath(), encrypted);
+  return { ok: true };
+}
+
+async function askDeepSeek(question) {
+  const text = normalizeString(question, 8000);
+  if (text.length < 1) return { ok: false, error: '请输入问题' };
+  const stored = await readAiKey();
+  if (!stored.ok) return stored;
+  if (!stored.key) return { ok: false, error: '请先填写并保存 DeepSeek API Key' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 70000);
+  try {
+    const response = await net.fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${stored.key}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        temperature: 0.35,
+        max_tokens: 1600,
+        messages: [
+          {
+            role: 'system',
+            content: '你是枣庄八中集成桌面教学系统的 AI 教学助手。请用简洁、准确、适合高中生理解的中文回答；涉及解题时先给思路，再给关键步骤，不要编造教材页码或事实。'
+          },
+          { role: 'user', content: text }
+        ]
+      }),
+      signal: controller.signal
+    });
+    const raw = await response.text();
+    let data = null;
+    try { data = JSON.parse(raw); } catch (error) { /* 非 JSON 响应 */ }
+    if (!response.ok) {
+      const apiMessage = data && data.error && data.error.message ? data.error.message : `HTTP ${response.status}`;
+      if (response.status === 401) return { ok: false, error: 'DeepSeek API Key 无效或已失效。' };
+      if (response.status === 402) return { ok: false, error: 'DeepSeek 账户余额不足，请充值后重试。' };
+      if (response.status === 429) return { ok: false, error: 'DeepSeek 请求过于频繁，请稍后再试。' };
+      return { ok: false, error: `DeepSeek 返回：${apiMessage}` };
+    }
+    const answer = data && data.choices && data.choices[0] && data.choices[0].message
+      ? String(data.choices[0].message.content || '').trim()
+      : '';
+    if (!answer) return { ok: false, error: 'DeepSeek 没有返回有效回答。' };
+    return { ok: true, answer };
+  } catch (error) {
+    if (error && error.name === 'AbortError') return { ok: false, error: 'AI 回答超时，请稍后重试。' };
+    return { ok: false, error: `AI 请求失败：${error.message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let phoneCast = null;
+
+function getLanAddress() {
+  const candidates = [];
+  const interfaces = os.networkInterfaces();
+  Object.values(interfaces).forEach((entries) => {
+    (entries || []).forEach((entry) => {
+      if (!entry || entry.family !== 'IPv4' || entry.internal) return;
+      if (/^169\.254\./.test(entry.address)) return;
+      candidates.push(entry.address);
+    });
+  });
+  return candidates.find((address) => /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address))
+    || candidates[0]
+    || '127.0.0.1';
+}
+
+async function stopPhoneCast() {
+  if (!phoneCast) return;
+  const current = phoneCast;
+  phoneCast = null;
+  try { current.wss.clients.forEach((client) => client.terminate()); } catch (error) { /* ignore */ }
+  try { current.wss.close(); } catch (error) { /* ignore */ }
+  try { current.server.close(); } catch (error) { /* ignore */ }
+}
+
+async function startPhoneCast() {
+  if (phoneCast) {
+    return { ok: true, url: phoneCast.url, qr: phoneCast.qr, ip: phoneCast.ip, port: phoneCast.port };
+  }
+  const ip = getLanAddress();
+  const token = crypto.randomBytes(18).toString('hex');
+  const pems = selfsigned.generate(
+    [{ name: 'commonName', value: ip || 'localhost' }],
+    { days: 365, keySize: 2048, algorithm: 'sha256' }
+  );
+  const page = await fsp.readFile(path.join(__dirname, 'src', 'phone-cast.html'), 'utf8');
+  const server = https.createServer({ key: pems.private, cert: pems.cert }, (req, res) => {
+    let parsed;
+    try { parsed = new URL(req.url || '/', `https://${req.headers.host || 'localhost'}`); } catch (error) { parsed = null; }
+    if (parsed && parsed.pathname === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (!parsed || parsed.pathname !== '/' || parsed.searchParams.get('t') !== token) {
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('投屏码无效，请重新扫描电脑上的二维码。');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    res.end(page);
+  });
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4 * 1024 * 1024 });
+  wss.on('connection', (socket, request) => {
+    let parsed;
+    try { parsed = new URL(request.url || '/', `https://${request.headers.host || 'localhost'}`); } catch (error) { parsed = null; }
+    if (!parsed || parsed.searchParams.get('t') !== token) {
+      socket.close();
+      return;
+    }
+    socket.on('message', (data) => {
+      const raw = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+      if (!/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/i.test(raw) || raw.length > 3 * 1024 * 1024) return;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('phone:frame', raw);
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '0.0.0.0', () => {
+      server.removeListener('error', reject);
+      resolve();
+    });
+  });
+  const port = server.address().port;
+  const url = `https://${ip}:${port}/?t=${token}`;
+  const qr = await QRCode.toDataURL(url, {
+    width: 280,
+    margin: 1,
+    color: { dark: '#1f5f91', light: '#ffffff' }
+  });
+  phoneCast = { server, wss, token, url, qr, ip, port };
+  return { ok: true, url, qr, ip, port };
 }
 
 function registerIpc() {
@@ -1140,6 +1336,23 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle('ai:key-status', async () => {
+    const result = await readAiKey();
+    return { ok: result.ok, hasKey: Boolean(result.ok && result.key) };
+  });
+  ipcMain.handle('ai:save-key', async (_event, key) => {
+    try {
+      return await saveAiKey(key);
+    } catch (error) {
+      return { ok: false, error: `保存 API Key 失败：${error.message}` };
+    }
+  });
+  ipcMain.handle('ai:clear-key', async () => {
+    await fsp.unlink(getAiKeyPath()).catch(() => {});
+    return { ok: true };
+  });
+  ipcMain.handle('ai:ask', async (_event, question) => askDeepSeek(question));
+
   ipcMain.handle('browser:get-credentials', async () => readBrowserCredentials());
   ipcMain.handle('browser:save-credentials', async (_event, payload) => {
     try {
@@ -1176,6 +1389,8 @@ function registerIpc() {
         releaseUrl: normalizeString(release.html_url, 500),
         assetUrl: asset ? normalizeString(asset.browser_download_url, 1000) : '',
         assetName: asset ? normalizeString(asset.name, 300) : '',
+        assetSize: asset ? Math.max(0, Number(asset.size) || 0) : 0,
+        assetDigest: asset ? normalizeString(asset.digest, 100) : '',
         notes: normalizeString(release.body, 4000),
         publishedAt: normalizeString(release.published_at, 40)
       };
@@ -1195,25 +1410,67 @@ function registerIpc() {
       if (!allowed) return { ok: false, error: '更新地址不是 GitHub 下载地址' };
       const requestedName = sanitizePathSegment(payload && payload.name, 'courseware-update.exe');
       const fileName = /\.exe$/i.test(requestedName) ? requestedName : `${requestedName || 'courseware-update'}.exe`;
-      const directories = [
-        app.getPath('downloads'),
-        path.join(getDataDir(), 'updates')
+      const expectedSize = Math.max(0, Number(payload && payload.expectedSize) || 0);
+      const expectedDigest = normalizeString(payload && payload.digest, 100).replace(/^sha256:/i, '').toLowerCase();
+      const sources = [
+        `https://ghfast.top/${rawUrl}`,
+        rawUrl
       ];
+      const directories = [app.getPath('downloads'), path.join(getDataDir(), 'updates')];
       let lastError = null;
       for (const dir of directories) {
-        let destination = '';
         try {
           await fsp.mkdir(dir, { recursive: true });
-          destination = await uniqueDestinationPath(dir, fileName);
-          const response = await net.fetch(rawUrl, {
-            headers: { 'User-Agent': 'ZZBZ-Courseware-Updater', Accept: 'application/octet-stream' }
-          });
-          if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-          await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination));
-          return { ok: true, filePath: destination };
         } catch (error) {
           lastError = error;
-          if (destination) await fsp.unlink(destination).catch(() => {});
+          continue;
+        }
+        for (const source of sources) {
+          const destination = await uniqueDestinationPath(dir, fileName);
+          const partPath = `${destination}.part`;
+          let received = 0;
+          let lastProgressAt = 0;
+          try {
+            const response = await net.fetch(source, {
+              headers: { 'User-Agent': 'ZZBZ-Courseware-Updater', Accept: 'application/octet-stream' },
+              redirect: 'follow'
+            });
+            if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+            const total = expectedSize || Number(response.headers.get('content-length')) || 0;
+            const hash = crypto.createHash('sha256');
+            const progress = new Transform({
+              transform(chunk, encoding, callback) {
+                received += chunk.length;
+                hash.update(chunk);
+                const now = Date.now();
+                if (mainWindow && !mainWindow.isDestroyed() && now - lastProgressAt > 180) {
+                  lastProgressAt = now;
+                  mainWindow.webContents.send('update:progress', {
+                    received,
+                    total,
+                    percent: total ? Math.min(100, Math.round((received / total) * 100)) : 0
+                  });
+                }
+                callback(null, chunk);
+              }
+            });
+            await pipeline(Readable.fromWeb(response.body), progress, fs.createWriteStream(partPath));
+            if (expectedSize && received !== expectedSize) throw new Error(`下载不完整：${received}/${expectedSize} 字节`);
+            if (!received) throw new Error('下载文件为空');
+            if (expectedDigest) {
+              const actualDigest = hash.digest('hex');
+              if (actualDigest !== expectedDigest) throw new Error('安装包校验失败，可能下载损坏');
+            }
+            await fsp.rename(partPath, destination);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('update:progress', { received, total: received, percent: 100 });
+            }
+            return { ok: true, filePath: destination, bytes: received };
+          } catch (error) {
+            lastError = error;
+            await fsp.unlink(partPath).catch(() => {});
+            await fsp.unlink(destination).catch(() => {});
+          }
         }
       }
       return { ok: false, error: `下载更新失败：${lastError ? lastError.message : '无法写入下载目录'}` };
@@ -1292,6 +1549,34 @@ function registerIpc() {
     await ensureDataDir();
     const errorMessage = await shell.openPath(getDataDir());
     return errorMessage ? { ok: false, error: errorMessage } : { ok: true };
+  });
+
+  ipcMain.handle('phone:start', async () => {
+    try {
+      return await startPhoneCast();
+    } catch (error) {
+      return { ok: false, error: `启动手机投屏失败：${error.message}` };
+    }
+  });
+  ipcMain.handle('phone:stop', async () => {
+    await stopPhoneCast();
+    return { ok: true };
+  });
+  ipcMain.handle('phone:status', () => ({
+    ok: true,
+    active: Boolean(phoneCast),
+    url: phoneCast ? phoneCast.url : '',
+    qr: phoneCast ? phoneCast.qr : '',
+    ip: phoneCast ? phoneCast.ip : '',
+    port: phoneCast ? phoneCast.port : 0
+  }));
+  ipcMain.handle('app:open-bluetooth-settings', async () => {
+    try {
+      await shell.openExternal('ms-settings:bluetooth');
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
   });
 
   ipcMain.handle('app:open-external', async (_event, url) => {
@@ -1514,6 +1799,10 @@ if (!gotLock) {
   });
   process.on('uncaughtException', (error) => {
     console.error('未捕获异常：', error);
+  });
+
+  app.on('before-quit', () => {
+    stopPhoneCast();
   });
 
   app.on('window-all-closed', () => {

@@ -1,8 +1,8 @@
 {
   "name": "zzbz-courseware-app",
-  "productName": "枣庄八中高中课件管理系统",
-  "version": "1.5.0",
-  "description": "枣庄八中高中课件管理系统 · 九大学科三年教材本地课件资源管理",
+  "productName": "枣庄八中集成桌面教学系统",
+  "version": "1.6.0",
+  "description": "枣庄八中集成桌面教学系统 · 九大学科三年教材本地课件资源管理",
   "main": "main.js",
   "author": "枣庄市第八中学",
   "contributors": [
@@ -35,7 +35,7 @@
   },
   "build": {
     "appId": "cn.edu.zzbz.courseware",
-    "productName": "枣庄八中高中课件管理系统",
+    "productName": "枣庄八中集成桌面教学系统",
     "copyright": "Copyright © 2026 枣庄市第八中学",
     "asar": true,
     "directories": {
@@ -64,7 +64,7 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "artifactName": "枣庄八中高中课件管理系统-${version}-安装包.${ext}"
+      "artifactName": "枣庄八中集成桌面教学系统-${version}-安装包.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -73,20 +73,23 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "枣庄八中高中课件管理系统",
+      "shortcutName": "枣庄八中集成桌面教学系统",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "installerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
-      "artifactName": "枣庄八中高中课件管理系统-${version}-安装包.${ext}"
+      "artifactName": "枣庄八中集成桌面教学系统-${version}-安装包.${ext}"
     },
     "portable": {
-      "artifactName": "枣庄八中高中课件管理系统-${version}-绿色版.${ext}",
+      "artifactName": "枣庄八中集成桌面教学系统-${version}-绿色版.${ext}",
       "requestExecutionLevel": "user"
     }
   },
   "dependencies": {
     "archiver": "^7.0.1",
+    "qrcode": "^1.5.4",
+    "selfsigned": "^2.4.1",
+    "ws": "^8.18.3",
     "xlsx": "^0.18.5"
   }
 }

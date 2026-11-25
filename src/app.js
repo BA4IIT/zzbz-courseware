@@ -21,7 +21,7 @@
         <div style="width:520px;padding:38px 40px;background:#fff;border:1px solid #dceaf7;border-radius:22px;box-shadow:0 24px 60px rgba(35,83,126,.13);text-align:center">
           <div style="width:58px;height:58px;display:grid;place-items:center;margin:0 auto 18px;border-radius:16px;background:linear-gradient(145deg,#2f7fd8,#68b7ef);color:#fff;font-size:17px;font-weight:700">八中</div>
           <h1 style="margin:0 0 10px;font-size:22px;color:#1c3f5d">请通过桌面程序启动</h1>
-          <p style="margin:0 0 20px;font-size:12px;line-height:1.9;color:#7e95a9">这是枣庄八中高中课件管理系统的界面文件。<br>请双击软件目录中的「枣庄八中高中课件管理系统.exe」。</p>
+          <p style="margin:0 0 20px;font-size:12px;line-height:1.9;color:#7e95a9">这是枣庄八中集成桌面教学系统的界面文件。<br>请双击软件目录中的「枣庄八中集成桌面教学系统.exe」。</p>
           <div style="padding:12px;border-radius:10px;background:#f6fbff;border:1px solid #e8f1f9;font-size:11px;color:#8aa0b3">本地软件版 · 课件原件保留在本机，不会上传云端</div>
         </div>
       </div>`;
@@ -37,8 +37,12 @@
     types: '课程分类',
     vocab: '英语 3500 词汇',
     questions: '学科提问',
+    ai: 'AI 解答',
+    wordgame: '单词天天练',
     vote: '科目投票',
     students: '随机点名',
+    phone: '手机投屏',
+    timer: '课堂计时器',
     browser: '内置浏览器',
     camera: '展台',
     whiteboard: '白板',
@@ -46,8 +50,16 @@
     usb: 'U 盘检测',
     data: '数据管理'
   };
-  const TOOL_PAGES = new Set(['vocab', 'questions', 'browser', 'camera', 'whiteboard', 'timetable', 'usb', 'vote', 'students']);
+  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'browser', 'camera', 'whiteboard', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer']);
   const ADMIN_PASSWORD = '6767';
+  const VOTE_EXTRA_SUBJECTS = [
+    { id: 'music', name: '音乐', short: '音', color: '#c56f9e' },
+    { id: 'pe', name: '体育', short: '体', color: '#2f9b78' },
+    { id: 'computer', name: '微机', short: '信', color: '#3b83c9' },
+    { id: 'art', name: '美术', short: '美', color: '#d58a3f' }
+  ];
+  const VOTE_SUBJECTS = [...DATA.catalog, ...VOTE_EXTRA_SUBJECTS];
+  const VOTE_BY_ID = Object.fromEntries(VOTE_SUBJECTS.map((subject) => [subject.id, subject]));
   const TIMETABLE_DAY_FIELDS = [
     { key: 'mon', label: '周一' },
     { key: 'tue', label: '周二' },
@@ -276,6 +288,10 @@
     cameraDeviceId: '',
     cameraStarting: false,
     cameraAutoStarted: false,
+    cameraResolution: 1920,
+    cameraClarity: 110,
+    cameraRotation: 0,
+    cameraMirrorX: false,
     browserInitialized: false,
     browserCredentials: null,
     subjectVotes: {},
@@ -284,6 +300,14 @@
     studentSpinTimer: 0,
     lastPickedStudent: '',
     adminPasswordCallback: null,
+    aiKeySaved: false,
+    aiAsking: false,
+    aiAnswer: '',
+    wordGame: null,
+    wordGameScores: [],
+    phoneCastActive: false,
+    phoneFrameCleanup: null,
+    timer: { total: 300, remaining: 300, running: false, endAt: 0, interval: 0, lastBeep: 0 },
     updateChecking: false,
     updateDownloading: false,
     updateInfo: null,
@@ -1064,7 +1088,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.5.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '1.6.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1445,6 +1469,22 @@
     }).filter(Boolean);
   }
 
+  function normalizeClientWordGameScores(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.slice(0, 500).map((entry) => {
+      if (!entry || !entry.nickname) return null;
+      const total = Math.max(1, Math.min(1000, Math.floor(Number(entry.total) || 0)));
+      const correct = Math.max(0, Math.min(total, Math.floor(Number(entry.correct) || 0)));
+      return {
+        nickname: String(entry.nickname).slice(0, 24),
+        total,
+        correct,
+        duration: Math.max(0, Math.floor(Number(entry.duration) || 0)),
+        date: String(entry.date || '')
+      };
+    }).filter(Boolean);
+  }
+
   function collectTimetableFromDom() {
     const table = $('#timetableTable');
     if (!table) return state.timetable || defaultClientTimetable();
@@ -1541,8 +1581,9 @@
   function applyBoardTransform(board) {
     const content = document.getElementById(board.contentId);
     if (content) content.style.transform = `translate(${board.panX}px, ${board.panY}px) scale(${board.zoom})`;
-    const label = document.querySelector(`[data-zoom-label="${board.name}"]`);
-    if (label) label.textContent = `${Math.round(board.zoom * 100)}%`;
+    $$(`[data-zoom-label="${board.name}"]`).forEach((label) => {
+      label.textContent = `${Math.round(board.zoom * 100)}%`;
+    });
   }
 
   function changeBoardZoom(board, action) {
@@ -1777,6 +1818,38 @@
     }
   }
 
+  function applyCameraEnhancements() {
+    const video = $('#cameraVideo');
+    if (!video) return;
+    const factor = Math.max(0.5, Math.min(1.6, (Number(state.cameraClarity) || 110) / 100));
+    video.style.filter = `contrast(${(0.78 + factor * 0.32).toFixed(3)}) saturate(${(0.84 + factor * 0.24).toFixed(3)}) brightness(${(0.92 + factor * 0.1).toFixed(3)})`;
+    const stage = $('#cameraStage');
+    const rect = stage ? stage.getBoundingClientRect() : { width: 16, height: 9 };
+    const rotate = ((Number(state.cameraRotation) || 0) % 360 + 360) % 360;
+    const fitScale = rotate === 90 || rotate === 270
+      ? Math.min(rect.width / Math.max(1, rect.height), rect.height / Math.max(1, rect.width))
+      : 1;
+    const mirror = state.cameraMirrorX ? -1 : 1;
+    video.style.transform = `rotate(${rotate}deg) scale(${fitScale.toFixed(4)}) scaleX(${mirror})`;
+    $$('[data-camera-mirror="x"]').forEach((button) => button.classList.toggle('is-active', Boolean(state.cameraMirrorX)));
+    const clarityValue = $('#cameraClarityValue');
+    if (clarityValue) clarityValue.textContent = `${state.cameraClarity}%`;
+  }
+
+  function updateCameraResolutionInfo() {
+    const info = $('#cameraResolutionInfo');
+    const video = $('#cameraVideo');
+    const track = state.cameraStream?.getVideoTracks?.()[0];
+    const settings = track?.getSettings?.() || {};
+    if (info) {
+      if (video && video.videoWidth) {
+        info.textContent = `画面 ${video.videoWidth} × ${video.videoHeight}${settings.frameRate ? ` · ${Math.round(settings.frameRate)} fps` : ''} · ${state.cameraClarity}% 清晰度`;
+      } else {
+        info.textContent = '等待摄像头画面…';
+      }
+    }
+  }
+
   async function startCamera(deviceId) {
     if (state.cameraStarting) return;
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -1790,9 +1863,15 @@
         state.cameraStream.getTracks().forEach((track) => track.stop());
         state.cameraStream = null;
       }
+      const width = Math.max(640, Number(state.cameraResolution) || 1920);
       const constraints = {
         audio: false,
-        video: deviceId ? { deviceId: { exact: deviceId } } : true
+        video: {
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+          width: { ideal: width },
+          height: { ideal: Math.round(width * 9 / 16) },
+          frameRate: { ideal: 30, max: 30 }
+        }
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       state.cameraStream = stream;
@@ -1807,6 +1886,8 @@
       if (liveBadge) liveBadge.hidden = false;
       const track = stream.getVideoTracks()[0];
       state.cameraDeviceId = track?.getSettings?.().deviceId || deviceId || '';
+      applyCameraEnhancements();
+      updateCameraResolutionInfo();
       cameraStatus('展台已连接', true);
       await refreshCameraDevices(state.cameraDeviceId);
       const select = $('#cameraDeviceSelect');
@@ -1842,7 +1923,16 @@
 
   function renderCamera() {
     initDrawingBoard(drawingState.camera);
-    requestAnimationFrame(() => resizeDrawingCanvas(drawingState.camera));
+    requestAnimationFrame(() => {
+      resizeDrawingCanvas(drawingState.camera);
+      applyCameraEnhancements();
+    });
+    const resolutionSelect = $('#cameraResolution');
+    if (resolutionSelect) resolutionSelect.value = String(state.cameraResolution);
+    const clarityInput = $('#cameraClarity');
+    if (clarityInput) clarityInput.value = String(state.cameraClarity);
+    applyCameraEnhancements();
+    updateCameraResolutionInfo();
     if (!state.cameraAutoStarted) {
       state.cameraAutoStarted = true;
       refreshCameraDevices().then(() => startCamera(state.cameraDeviceId));
@@ -2312,7 +2402,12 @@
     button.disabled = true;
     button.innerHTML = '<span class="spinner"></span>正在下载…';
     try {
-      const result = await api.downloadUpdate({ url: info.assetUrl, name: info.assetName });
+      const result = await api.downloadUpdate({
+        url: info.assetUrl,
+        name: info.assetName,
+        expectedSize: info.assetSize,
+        digest: info.assetDigest
+      });
       if (!result?.ok) {
         showToast(result?.error || '下载更新失败', { type: 'error', title: '下载失败' });
         button.disabled = false;
@@ -2343,6 +2438,14 @@
     if (checkUpdateButton) checkUpdateButton.addEventListener('click', checkForUpdates);
     const checkUpdateDataButton = $('#checkUpdateDataButton');
     if (checkUpdateDataButton) checkUpdateDataButton.addEventListener('click', checkForUpdates);
+    if (api.onUpdateProgress) {
+      api.onUpdateProgress((progress) => {
+        const button = $('#updateDownloadButton');
+        if (!button || !state.updateDownloading) return;
+        const percent = progress && progress.percent ? progress.percent : 0;
+        button.innerHTML = percent ? `<span class="spinner"></span>下载中 ${percent}%` : '<span class="spinner"></span>正在下载…';
+      });
+    }
 
     $$('[data-browser-back]').forEach((button) => button.addEventListener('click', () => browserNavigate('back')));
     $$('[data-browser-forward]').forEach((button) => button.addEventListener('click', () => browserNavigate('forward')));
@@ -2391,6 +2494,42 @@
     if (cameraStopButton) cameraStopButton.addEventListener('click', stopCamera);
     const cameraDeviceSelect = $('#cameraDeviceSelect');
     if (cameraDeviceSelect) cameraDeviceSelect.addEventListener('change', () => startCamera(cameraDeviceSelect.value));
+    const cameraResolution = $('#cameraResolution');
+    if (cameraResolution) {
+      cameraResolution.value = String(state.cameraResolution);
+      cameraResolution.addEventListener('change', () => {
+        state.cameraResolution = Number(cameraResolution.value) || 1920;
+        state.cameraAutoStarted = true;
+        stopCamera();
+        startCamera(state.cameraDeviceId);
+      });
+    }
+    const cameraClarity = $('#cameraClarity');
+    if (cameraClarity) {
+      cameraClarity.value = String(state.cameraClarity);
+      cameraClarity.addEventListener('input', () => {
+        state.cameraClarity = Number(cameraClarity.value) || 110;
+        applyCameraEnhancements();
+        updateCameraResolutionInfo();
+      });
+    }
+    $$('[data-camera-rotate-step]').forEach((button) => button.addEventListener('click', () => {
+      state.cameraRotation = ((Number(state.cameraRotation) || 0) + 90) % 360;
+      applyCameraEnhancements();
+    }));
+    $$('[data-camera-mirror="x"]').forEach((button) => button.addEventListener('click', () => {
+      state.cameraMirrorX = !state.cameraMirrorX;
+      applyCameraEnhancements();
+    }));
+    $$('[data-camera-orientation-reset]').forEach((button) => button.addEventListener('click', () => {
+      state.cameraRotation = 0;
+      state.cameraMirrorX = false;
+      applyCameraEnhancements();
+    }));
+    const cameraVideo = $('#cameraVideo');
+    if (cameraVideo) cameraVideo.addEventListener('loadedmetadata', updateCameraResolutionInfo);
+    document.addEventListener('fullscreenchange', () => requestAnimationFrame(applyCameraEnhancements));
+    window.addEventListener('resize', applyCameraEnhancements);
     const cameraFullscreen = $('#cameraFullscreen');
     if (cameraFullscreen) {
       cameraFullscreen.addEventListener('click', () => {
@@ -2457,6 +2596,69 @@
       });
     }
 
+    const aiSaveKey = $('#aiSaveKey');
+    if (aiSaveKey) aiSaveKey.addEventListener('click', () => saveAiKeyFromForm(true));
+    const aiClearKey = $('#aiClearKey');
+    if (aiClearKey) aiClearKey.addEventListener('click', clearAiKey);
+    const aiAskButton = $('#aiAskButton');
+    if (aiAskButton) aiAskButton.addEventListener('click', askAi);
+    const aiCopyAnswer = $('#aiCopyAnswer');
+    if (aiCopyAnswer) aiCopyAnswer.addEventListener('click', copyAiAnswer);
+    const aiQuestion = $('#aiQuestion');
+    if (aiQuestion) aiQuestion.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        askAi();
+      }
+    });
+
+    const phoneStartButton = $('#phoneStart');
+    if (phoneStartButton) phoneStartButton.addEventListener('click', startPhoneCast);
+    const phoneStopButton = $('#phoneStop');
+    if (phoneStopButton) phoneStopButton.addEventListener('click', stopPhoneCast);
+    const phoneFullscreenButton = $('#phoneFullscreen');
+    if (phoneFullscreenButton) phoneFullscreenButton.addEventListener('click', phoneFullscreen);
+    const bluetoothSettingsButton = $('#bluetoothSettingsButton');
+    if (bluetoothSettingsButton) bluetoothSettingsButton.addEventListener('click', async () => {
+      const result = await api.openBluetoothSettings?.();
+      if (result && !result.ok) showToast(result.error || '无法打开蓝牙设置', { type: 'warn' });
+    });
+    if (api.onPhoneFrame && !state.phoneFrameCleanup) {
+      state.phoneFrameCleanup = api.onPhoneFrame(handlePhoneFrame);
+    }
+
+    const timerStart = $('#timerStart');
+    if (timerStart) timerStart.addEventListener('click', timerStartPause);
+    const timerResetButton = $('#timerReset');
+    if (timerResetButton) timerResetButton.addEventListener('click', timerReset);
+    const timerFullscreen = $('#timerFullscreen');
+    if (timerFullscreen) timerFullscreen.addEventListener('click', () => {
+      const card = $('#timerCard');
+      if (card && !document.fullscreenElement) card.requestFullscreen?.().catch(() => {});
+      else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    });
+    $$('[data-timer-preset]').forEach((button) => button.addEventListener('click', () => {
+      timerSetTotal(Number(button.dataset.timerPreset) || 0);
+      timerStartPause();
+    }));
+    ['#timerMinutes', '#timerSeconds'].forEach((selector) => {
+      const input = $(selector);
+      if (input) input.addEventListener('change', timerReadInputs);
+    });
+
+    const wordGameStartButton = $('#wordGameStartButton');
+    if (wordGameStartButton) wordGameStartButton.addEventListener('click', startWordGame);
+    const wordGameNext = $('#wordGameNext');
+    if (wordGameNext) wordGameNext.addEventListener('click', nextWordQuestion);
+    const wordGameAgain = $('#wordGameAgain');
+    if (wordGameAgain) wordGameAgain.addEventListener('click', () => { resetWordGame(); startWordGame(); });
+    const wordGameBack = $('#wordGameBack');
+    if (wordGameBack) wordGameBack.addEventListener('click', resetWordGame);
+    const wordGameNickname = $('#wordGameNickname');
+    if (wordGameNickname) wordGameNickname.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); startWordGame(); }
+    });
+
     const voteResultsButton = $('#voteResultsButton');
     if (voteResultsButton) voteResultsButton.addEventListener('click', showVoteResults);
     const importStudentsButton = $('#importStudentsButton');
@@ -2488,6 +2690,538 @@
         resizeDrawingCanvas(drawingState.whiteboard);
       });
     });
+  }
+
+  /* ---------------- AI 解答 ---------------- */
+
+  function setAiStatus(text, tone) {
+    const node = $('#aiKeyStatus');
+    if (!node) return;
+    node.className = `ai-key-status${tone ? ` is-${tone}` : ''}`;
+    node.innerHTML = `<span></span>${esc(text)}`;
+  }
+
+  async function renderAi() {
+    if (!api.ai) {
+      setAiStatus('当前版本不支持 AI 解答。', 'error');
+      return;
+    }
+    try {
+      const result = await api.ai.status();
+      state.aiKeySaved = Boolean(result && result.hasKey);
+      setAiStatus(state.aiKeySaved ? 'API Key 已保存（加密存储）' : '尚未填写 DeepSeek API Key', state.aiKeySaved ? 'ok' : 'warn');
+    } catch (error) {
+      setAiStatus('读取 API Key 状态失败', 'error');
+    }
+    const answer = $('#aiAnswer');
+    if (answer && state.aiAnswer) {
+      answer.textContent = state.aiAnswer;
+      const copy = $('#aiCopyAnswer');
+      if (copy) copy.hidden = false;
+    }
+  }
+
+  async function saveAiKeyFromForm(showMessage = true) {
+    const input = $('#aiKeyInput');
+    if (!api.ai || !input) return false;
+    const key = input.value.trim();
+    if (!key) {
+      if (showMessage) showToast('请先填写 DeepSeek API Key。', { type: 'warn' });
+      return false;
+    }
+    const result = await api.ai.saveKey(key);
+    if (!result || !result.ok) {
+      showToast((result && result.error) || '保存 API Key 失败', { type: 'error' });
+      return false;
+    }
+    input.value = '';
+    state.aiKeySaved = true;
+    setAiStatus('API Key 已保存（加密存储）', 'ok');
+    if (showMessage) showToast('DeepSeek API Key 已加密保存。', { type: 'success' });
+    return true;
+  }
+
+  async function askAi() {
+    if (state.aiAsking) return;
+    const input = $('#aiQuestion');
+    const question = input ? input.value.trim() : '';
+    if (!question) {
+      showToast('请先输入问题。', { type: 'warn' });
+      return;
+    }
+    if (!state.aiKeySaved) {
+      const saved = await saveAiKeyFromForm(false);
+      if (!saved) {
+        showToast('请先填写并保存 DeepSeek API Key。', { type: 'warn' });
+        $('#aiKeyInput')?.focus();
+        return;
+      }
+    }
+    state.aiAsking = true;
+    const button = $('#aiAskButton');
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = `<span class="spinner"></span>AI 正在思考…`;
+    }
+    const answer = $('#aiAnswer');
+    if (answer) answer.innerHTML = '<div class="ai-thinking"><span></span><span></span><span></span>正在请求 DeepSeek…</div>';
+    const copy = $('#aiCopyAnswer');
+    if (copy) copy.hidden = true;
+    try {
+      const result = await api.ai.ask(question);
+      if (!result || !result.ok) {
+        state.aiAnswer = '';
+        if (answer) answer.innerHTML = `<div class="ai-error">${icon('alert')}<strong>回答失败</strong><p>${esc((result && result.error) || '未知错误')}</p></div>`;
+        return;
+      }
+      state.aiAnswer = result.answer;
+      if (answer) answer.textContent = result.answer;
+      if (copy) copy.hidden = false;
+    } catch (error) {
+      if (answer) answer.innerHTML = `<div class="ai-error">${icon('alert')}<strong>回答失败</strong><p>${esc(error.message)}</p></div>`;
+    } finally {
+      state.aiAsking = false;
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = `${icon('sparkles')}发送给 AI`;
+      }
+    }
+  }
+
+  async function clearAiKey() {
+    if (!api.ai) return;
+    await api.ai.clearKey();
+    state.aiKeySaved = false;
+    setAiStatus('尚未填写 DeepSeek API Key', 'warn');
+    showToast('已清除本机保存的 API Key。', { type: 'success' });
+  }
+
+  async function copyAiAnswer() {
+    if (!state.aiAnswer) return;
+    try {
+      await navigator.clipboard.writeText(state.aiAnswer);
+      showToast('回答已复制。', { type: 'success' });
+    } catch (error) {
+      showToast('复制失败，请手动选择文本。', { type: 'warn' });
+    }
+  }
+
+  /* ---------------- 单词天天练 ---------------- */
+
+  function shuffleList(list) {
+    const result = [...list];
+    for (let i = result.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  function makeWordQuestions(count) {
+    const pool = WORDS.filter((word) => word && word.w && word.m);
+    const picked = shuffleList(pool).slice(0, Math.min(count, pool.length));
+    return picked.map((word) => {
+      const direction = Math.random() < 0.5 ? 'en-zh' : 'zh-en';
+      const correct = direction === 'en-zh' ? word.m : word.w;
+      const options = [correct];
+      const candidates = shuffleList(pool);
+      for (const candidate of candidates) {
+        const option = direction === 'en-zh' ? candidate.m : candidate.w;
+        if (!option || options.includes(option)) continue;
+        options.push(option);
+        if (options.length >= 4) break;
+      }
+      return {
+        direction,
+        prompt: direction === 'en-zh' ? word.w : word.m,
+        correct,
+        options: shuffleList(options)
+      };
+    });
+  }
+
+  function wordGameDuration(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  }
+
+  function renderWordRanking() {
+    const container = $('#wordGameRanking');
+    const countNode = $('#wordGameRankCount');
+    if (!container) return;
+    const rows = [...state.wordGameScores].sort((a, b) => {
+      if (b.correct !== a.correct) return b.correct - a.correct;
+      if (a.duration !== b.duration) return a.duration - b.duration;
+      return String(b.date).localeCompare(String(a.date));
+    });
+    if (countNode) countNode.textContent = `${rows.length} 人`;
+    container.innerHTML = rows.length
+      ? `<div class="wordgame-rank-head"><span>名次</span><span>昵称</span><span>正确</span><span>用时</span><span>日期</span></div>${rows.slice(0, 20).map((row, index) => `<div class="wordgame-rank-row${index < 3 ? ` top-${index + 1}` : ''}"><span>${index + 1}</span><strong>${esc(row.nickname)}</strong><span>${row.correct}/${row.total}</span><span>${wordGameDuration(row.duration)}</span><small>${esc(row.date)}</small></div>`).join('')}`
+      : `<div class="wordgame-rank-empty">${icon('trophy')}<p>还没有通关记录<br>完成一轮挑战后就会出现在这里</p></div>`;
+  }
+
+  function renderWordGame() {
+    const start = $('#wordGameStart');
+    const play = $('#wordGamePlay');
+    const result = $('#wordGameResult');
+    if (!start || !play || !result) return;
+    const nicknameInput = $('#wordGameNickname');
+    if (nicknameInput && !nicknameInput.value) {
+      nicknameInput.value = localStorage.getItem('zzbz-wordgame-nickname') || '';
+    }
+    const game = state.wordGame;
+    start.hidden = Boolean(game);
+    play.hidden = !game || game.finished;
+    result.hidden = !game || !game.finished;
+    renderWordRanking();
+    if (!game) return;
+    if (game.finished) {
+      const data = game.result || { correct: 0, total: game.total, duration: 0 };
+      const score = $('#wordGameResultScore');
+      const accuracy = $('#wordGameResultAccuracy');
+      const time = $('#wordGameResultTime');
+      const title = $('#wordGameResultTitle');
+      if (score) score.textContent = String(data.correct);
+      if (accuracy) accuracy.textContent = `${Math.round((data.correct / Math.max(1, data.total)) * 100)}%`;
+      if (time) time.textContent = wordGameDuration(data.duration);
+      if (title) title.textContent = data.isBest ? '刷新了你的最好成绩！' : '本轮完成';
+      return;
+    }
+    const question = game.questions[game.index];
+    if (!question) return;
+    const progress = $('#wordGameProgress');
+    const score = $('#wordGameScore');
+    const bar = $('#wordGameProgressBar');
+    const direction = $('#wordGameDirection');
+    const prompt = $('#wordGamePrompt');
+    const feedback = $('#wordGameFeedback');
+    const next = $('#wordGameNext');
+    if (progress) progress.textContent = `第 ${game.index + 1} / ${game.total} 题`;
+    if (score) score.textContent = `正确 ${game.correct}`;
+    if (bar) bar.style.width = `${((game.index + (game.answered ? 1 : 0)) / game.total) * 100}%`;
+    if (direction) direction.textContent = question.direction === 'en-zh' ? '英译汉' : '汉译英';
+    if (prompt) prompt.textContent = question.prompt;
+    const options = $('#wordGameOptions');
+    if (options) {
+      options.innerHTML = question.options.map((option, index) => {
+        let className = 'wordgame-option';
+        if (game.answered) {
+          if (option === question.correct) className += ' is-correct';
+          else if (option === game.selected) className += ' is-wrong';
+        }
+        return `<button type="button" class="${className}" data-word-option="${attr(option)}"><span>${String.fromCharCode(65 + index)}</span>${esc(option)}</button>`;
+      }).join('');
+    }
+    if (feedback) {
+      feedback.hidden = !game.answered;
+      if (game.answered) {
+        const right = game.selected === question.correct;
+        feedback.className = `wordgame-feedback ${right ? 'is-right' : 'is-wrong'}`;
+        feedback.innerHTML = right
+          ? `${icon('check')}回答正确`
+          : `${icon('close')}回答错误，正确答案是「${esc(question.correct)}」`;
+      }
+    }
+    if (next) {
+      next.hidden = !game.answered;
+      next.textContent = game.index >= game.total - 1 ? '查看本轮成绩' : '下一题';
+    }
+  }
+
+  function startWordGame() {
+    const nicknameInput = $('#wordGameNickname');
+    const countSelect = $('#wordGameCount');
+    const nickname = nicknameInput ? nicknameInput.value.trim().slice(0, 24) : '';
+    if (!nickname) {
+      showToast('请先输入昵称。', { type: 'warn' });
+      nicknameInput?.focus();
+      return;
+    }
+    if (WORDS.length < 4) {
+      showToast('词库数据加载失败。', { type: 'error' });
+      return;
+    }
+    const total = Math.max(5, Math.min(100, Number(countSelect?.value) || 10));
+    localStorage.setItem('zzbz-wordgame-nickname', nickname);
+    state.wordGame = {
+      nickname,
+      total,
+      questions: makeWordQuestions(total),
+      index: 0,
+      correct: 0,
+      selected: '',
+      answered: false,
+      startedAt: Date.now(),
+      finished: false,
+      result: null
+    };
+    renderWordGame();
+    $('#wordGameOptions button')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  async function answerWordQuestion(option) {
+    const game = state.wordGame;
+    if (!game || game.finished || game.answered) return;
+    const question = game.questions[game.index];
+    if (!question) return;
+    game.selected = option;
+    game.answered = true;
+    if (option === question.correct) game.correct += 1;
+    renderWordGame();
+  }
+
+  function nextWordQuestion() {
+    const game = state.wordGame;
+    if (!game || game.finished || !game.answered) return;
+    if (game.index >= game.total - 1) {
+      finishWordGame();
+      return;
+    }
+    game.index += 1;
+    game.selected = '';
+    game.answered = false;
+    renderWordGame();
+  }
+
+  async function finishWordGame() {
+    const game = state.wordGame;
+    if (!game || game.finished) return;
+    const duration = Math.max(1, Math.round((Date.now() - game.startedAt) / 1000));
+    game.finished = true;
+    const existing = state.wordGameScores.find((entry) => entry.nickname === game.nickname);
+    const better = !existing
+      || game.correct > existing.correct
+      || (game.correct === existing.correct && duration < existing.duration);
+    if (better) {
+      const newScore = {
+        nickname: game.nickname,
+        total: game.total,
+        correct: game.correct,
+        duration,
+        date: todayVoteKey()
+      };
+      state.wordGameScores = existing
+        ? state.wordGameScores.map((entry) => entry.nickname === game.nickname ? newScore : entry)
+        : [...state.wordGameScores, newScore];
+    }
+    game.result = { correct: game.correct, total: game.total, duration, isBest: better };
+    await persistLibrary();
+    renderWordGame();
+  }
+
+  function resetWordGame() {
+    state.wordGame = null;
+    renderWordGame();
+  }
+
+  /* ---------------- 课堂计时器 ---------------- */
+
+  function timerText(seconds) {
+    const total = Math.max(0, Math.ceil(seconds));
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  }
+
+  function renderTimer() {
+    const display = $('#timerDisplay');
+    if (display) display.textContent = timerText(state.timer.remaining);
+    const minutes = $('#timerMinutes');
+    const seconds = $('#timerSeconds');
+    if (minutes && document.activeElement !== minutes) minutes.value = String(Math.floor(state.timer.total / 60));
+    if (seconds && document.activeElement !== seconds) seconds.value = String(state.timer.total % 60);
+    const label = $('#timerModeLabel');
+    if (label) label.textContent = state.timer.remaining <= 0 ? '时间到' : (state.timer.running ? '计时中' : '倒计时');
+    const card = $('#timerCard');
+    if (card) card.classList.toggle('is-finished', state.timer.remaining <= 0);
+    const button = $('#timerStart');
+    if (button) button.innerHTML = `${icon('clock')}${state.timer.running ? '暂停' : (state.timer.remaining <= 0 ? '重新开始' : '开始计时')}`;
+  }
+
+  function stopTimerTicker() {
+    if (state.timer.interval) window.clearInterval(state.timer.interval);
+    state.timer.interval = 0;
+    state.timer.running = false;
+  }
+
+  function timerBeep() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      [0, 0.35, 0.7].forEach((offset) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + offset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + offset + 0.25);
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(ctx.currentTime + offset);
+        oscillator.stop(ctx.currentTime + offset + 0.3);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 1300);
+    } catch (error) {
+      /* 浏览器阻止声音时忽略 */
+    }
+  }
+
+  function timerTick() {
+    const remaining = Math.max(0, Math.ceil((state.timer.endAt - Date.now()) / 1000));
+    state.timer.remaining = remaining;
+    if (remaining <= 0) {
+      stopTimerTicker();
+      timerBeep();
+      renderTimer();
+      showToast('计时结束。', { type: 'info', duration: 3000 });
+      return;
+    }
+    renderTimer();
+  }
+
+  function timerStartPause() {
+    if (state.timer.running) {
+      state.timer.remaining = Math.max(0, Math.ceil((state.timer.endAt - Date.now()) / 1000));
+      stopTimerTicker();
+      renderTimer();
+      return;
+    }
+    if (state.timer.remaining <= 0) state.timer.remaining = state.timer.total;
+    if (state.timer.remaining <= 0) {
+      showToast('请先设置计时时间。', { type: 'warn' });
+      return;
+    }
+    state.timer.endAt = Date.now() + state.timer.remaining * 1000;
+    state.timer.running = true;
+    state.timer.interval = window.setInterval(timerTick, 250);
+    renderTimer();
+  }
+
+  function timerSetTotal(total) {
+    stopTimerTicker();
+    state.timer.total = Math.max(0, Math.min(10800, Math.floor(Number(total) || 0)));
+    state.timer.remaining = state.timer.total;
+    renderTimer();
+  }
+
+  function timerReset() {
+    stopTimerTicker();
+    state.timer.remaining = state.timer.total;
+    renderTimer();
+  }
+
+  function timerReadInputs() {
+    const minutes = Math.max(0, Math.min(180, Math.floor(Number($('#timerMinutes')?.value) || 0)));
+    const seconds = Math.max(0, Math.min(59, Math.floor(Number($('#timerSeconds')?.value) || 0)));
+    timerSetTotal(minutes * 60 + seconds);
+  }
+
+  /* ---------------- 手机扫码投屏 ---------------- */
+
+  function resetPhoneStage() {
+    state.phoneCastActive = false;
+    const img = $('#phoneFrame');
+    if (img) { img.hidden = true; img.removeAttribute('src'); }
+    const empty = $('#phoneEmpty');
+    if (empty) empty.hidden = false;
+    const live = $('#phoneLiveBadge');
+    if (live) live.hidden = true;
+    const dot = $('#phoneLiveDot');
+    if (dot) dot.classList.remove('is-live');
+    const qrBox = $('#phoneQrBox');
+    if (qrBox) qrBox.innerHTML = `<div class="phone-qr-placeholder">${icon('phone')}<p>点击「生成投屏码」后显示二维码</p></div>`;
+    const url = $('#phoneUrl');
+    if (url) url.textContent = '等待生成地址…';
+    const start = $('#phoneStart');
+    if (start) start.disabled = false;
+    const stop = $('#phoneStop');
+    if (stop) stop.disabled = true;
+    const status = $('#phoneStatus');
+    if (status) status.textContent = '未启动';
+  }
+
+  async function renderPhone() {
+    if (!api.startPhoneCast) {
+      const status = $('#phoneStatus');
+      if (status) status.textContent = '当前版本不支持手机投屏';
+      return;
+    }
+    try {
+      const result = await api.phoneCastStatus();
+      if (result && result.active && result.qr) {
+        state.phoneCastActive = true;
+        const qrBox = $('#phoneQrBox');
+        if (qrBox) qrBox.innerHTML = `<img src="${attr(result.qr)}" alt="手机投屏二维码">`;
+        const url = $('#phoneUrl');
+        if (url) url.textContent = result.url;
+        $('#phoneStart') && ($('#phoneStart').disabled = true);
+        $('#phoneStop') && ($('#phoneStop').disabled = false);
+        const status = $('#phoneStatus');
+        if (status) status.textContent = '投屏服务已开启，等待手机扫码';
+      } else {
+        resetPhoneStage();
+      }
+    } catch (error) {
+      resetPhoneStage();
+    }
+  }
+
+  async function startPhoneCast() {
+    if (!api.startPhoneCast) return;
+    const start = $('#phoneStart');
+    if (start) start.disabled = true;
+    const status = $('#phoneStatus');
+    if (status) status.textContent = '正在生成投屏二维码…';
+    const result = await api.startPhoneCast();
+    if (!result || !result.ok) {
+      resetPhoneStage();
+      showToast((result && result.error) || '启动手机投屏失败', { type: 'error' });
+      return;
+    }
+    state.phoneCastActive = true;
+    const qrBox = $('#phoneQrBox');
+    if (qrBox) qrBox.innerHTML = `<img src="${attr(result.qr)}" alt="手机投屏二维码">`;
+    const url = $('#phoneUrl');
+    if (url) url.textContent = result.url || '';
+    const stop = $('#phoneStop');
+    if (stop) stop.disabled = false;
+    if (status) status.textContent = `投屏地址已生成（端口 ${result.port}），等待手机扫码`;
+    const empty = $('#phoneEmpty');
+    if (empty) empty.hidden = false;
+    const live = $('#phoneLiveBadge');
+    if (live) live.hidden = true;
+    showToast('手机投屏码已生成，请用手机扫描右侧二维码。', { type: 'success', duration: 4000 });
+  }
+
+  async function stopPhoneCast() {
+    if (api.stopPhoneCast) await api.stopPhoneCast();
+    resetPhoneStage();
+    showToast('手机投屏已停止。', { type: 'success' });
+  }
+
+  function handlePhoneFrame(dataUrl) {
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return;
+    const img = $('#phoneFrame');
+    if (!img) return;
+    img.src = dataUrl;
+    img.hidden = false;
+    const empty = $('#phoneEmpty');
+    if (empty) empty.hidden = true;
+    const live = $('#phoneLiveBadge');
+    if (live) live.hidden = false;
+    const dot = $('#phoneLiveDot');
+    if (dot) dot.classList.add('is-live');
+    const status = $('#phoneStatus');
+    if (status) status.textContent = '手机画面已接入';
+    state.phoneCastActive = true;
+  }
+
+  function phoneFullscreen() {
+    const stage = $('#phoneStage');
+    if (stage && !document.fullscreenElement) stage.requestFullscreen?.().catch(() => {});
+    else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   }
 
   /* ---------------- 管理员密码 ---------------- */
@@ -2561,7 +3295,7 @@
     if (totalNode) totalNode.textContent = `${total} 票`;
     const grid = $('#subjectVoteGrid');
     if (!grid) return;
-    grid.innerHTML = DATA.catalog.map((subject) => `<button type="button" class="subject-vote-card" data-vote-subject="${subject.id}" style="--subject-color:${subject.color}">
+    grid.innerHTML = VOTE_SUBJECTS.map((subject) => `<button type="button" class="subject-vote-card" data-vote-subject="${subject.id}" style="--subject-color:${subject.color}">
       <span class="subject-vote-mark">${esc(subject.short)}</span>
       <strong>${esc(subject.name)}</strong>
       <span>投一票</span>
@@ -2569,7 +3303,7 @@
   }
 
   async function voteForSubject(subjectId) {
-    const subject = DATA.subjectById[subjectId];
+    const subject = VOTE_BY_ID[subjectId];
     if (!subject) return;
     const data = todayVoteData();
     data[subjectId] = Math.min(99999, (Number(data[subjectId]) || 0) + 1);
@@ -2589,7 +3323,7 @@
   function openVoteResultsModal() {
     const key = todayVoteKey();
     const data = state.subjectVotes[key] || {};
-    const rows = DATA.catalog.map((subject) => ({
+    const rows = VOTE_SUBJECTS.map((subject) => ({
       subject,
       votes: Number(data[subject.id]) || 0
     })).sort((a, b) => b.votes - a.votes);
@@ -3930,15 +4664,19 @@
           </ul>
           <h3>课堂工具</h3>
           <ul class="help-list">
+            <li><strong>AI 解答</strong>：填写并加密保存 DeepSeek API Key，可在各学科提问并获得 AI 回答。</li>
+            <li><strong>单词天天练</strong>：高中英语 3500 词库随机出题，英译汉/汉译英四选一，支持昵称通关排名。</li>
             <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址；可在右侧加密保存账号密码，登录页自动填充。</li>
-            <li><strong>展台 / 白板</strong>：自动连接摄像头并可全屏投放，支持缩放、鼠标移动、多色批画、橡皮；全屏时右上角可退出，白板可保存 PNG。</li>
-            <li><strong>科目投票</strong>：每天按日期为学科投票，查看结果需要管理员密码。</li>
+            <li><strong>展台 / 白板</strong>：支持 1080P/720P/480P 采集、清晰度增强、旋转/镜像、全屏、缩放、鼠标移动、多色批画和橡皮；全屏时底部工具栏可直接控制。</li>
+            <li><strong>科目投票</strong>：每天按日期为 13 个学科投票，查看结果需要管理员密码。</li>
             <li><strong>随机点名</strong>：导入 Excel/CSV 名单，按可调权重随机抽取学生；后台设置需要管理员密码。</li>
+            <li><strong>手机投屏</strong>：手机扫描二维码后通过同一 Wi-Fi 投摄像头或屏幕；蓝牙用于设备配对。</li>
+            <li><strong>课堂计时器</strong>：预设/自定义倒计时，支持暂停、重置、全屏与结束提示音。</li>
             <li><strong>课程表</strong>：直接修改节次、时间和课程，周六/周日可切换 A 表/B 表。</li>
             <li><strong>U 盘检测</strong>：检查可疑可执行文件、伪装文档和 autorun 项，也可调用 Windows Defender。</li>
             <li><strong>检查更新</strong>：右上角刷新图标，或「数据管理 → 关于系统 → 检查更新」。</li>
           </ul>
-          <div class="help-tip">建议定期在「数据管理」中导出数据备份。备份包含课件索引、学科提问、课程表与分类信息，不包含课件原文件。</div>
+          <div class="help-tip">建议定期在「数据管理」中导出数据备份。备份包含课件索引、学科提问、课程表、投票、名单和单词成绩，不包含课件原文件。</div>
           <div class="help-team">
             <img src="../assets/school-badge.png" alt="枣庄八中校徽">
             <div class="help-team-copy">
@@ -4004,6 +4742,7 @@
         timetable: state.timetable,
         subjectVotes: state.subjectVotes,
         students: state.students,
+        wordGameScores: state.wordGameScores,
         settings: state.settings
       });
       if (!result || !result.ok) throw new Error(result?.error || '保存失败');
@@ -4057,6 +4796,10 @@
     searchTimer = 0;
     if (!PAGE_TITLES[page]) page = 'library';
     if (state.page === 'camera' && page !== 'camera') stopCamera();
+    if (state.page === 'phone' && page !== 'phone') {
+      api.stopPhoneCast?.().catch(() => {});
+      resetPhoneStage();
+    }
     state.page = page;
     ui.pagePanels.forEach((panel) => {
       panel.hidden = panel.dataset.panel !== page;
@@ -4075,6 +4818,10 @@
     if (page === 'usb') renderUsb();
     if (page === 'vote') renderVote();
     if (page === 'students') renderStudents();
+    if (page === 'ai') renderAi();
+    if (page === 'wordgame') renderWordGame();
+    if (page === 'phone') renderPhone();
+    if (page === 'timer') renderTimer();
     if (page === 'data') renderData();
     if (!options || options.scroll !== false) ui.mainScroll.scrollTop = 0;
   }
@@ -4177,8 +4924,8 @@
 
   async function exportJson() {
     const backup = {
-      app: '枣庄八中高中课件管理系统',
-      formatVersion: 4,
+      app: '枣庄八中集成桌面教学系统',
+      formatVersion: 5,
       school: '枣庄市第八中学',
       exportedAt: new Date().toISOString(),
       settings: { ...state.settings, initialized: true },
@@ -4186,7 +4933,8 @@
       questions: state.questions,
       timetable: state.timetable,
       subjectVotes: state.subjectVotes,
-      students: state.students
+      students: state.students,
+      wordGameScores: state.wordGameScores
     };
     const result = await api.saveText({
       title: '导出课件库数据备份',
@@ -4277,6 +5025,8 @@
     const backupVotes = normalizeClientSubjectVotes(parsed.subjectVotes);
     const hasBackupStudents = Array.isArray(parsed.students);
     const backupStudents = normalizeClientStudents(parsed.students);
+    const hasBackupWordScores = Array.isArray(parsed.wordGameScores);
+    const backupWordScores = normalizeClientWordGameScores(parsed.wordGameScores);
     const questionMessage = hasBackupQuestions
       ? `备份中的 <strong>${backupQuestions.length}</strong> 条学科提问`
       : `当前 <strong>${backupQuestions.length}</strong> 条学科提问（旧备份未包含）`;
@@ -4291,6 +5041,7 @@
         if (hasBackupTimetable) state.timetable = backupTimetable;
         if (hasBackupVotes) state.subjectVotes = backupVotes;
         if (hasBackupStudents) state.students = backupStudents;
+        if (hasBackupWordScores) state.wordGameScores = backupWordScores;
         state.questionVoteEditId = '';
         state.settings = {
           ...(parsed.settings || {}),
@@ -4544,6 +5295,12 @@
       state.view = viewButton.dataset.view === 'list' ? 'list' : 'grid';
       renderFilters();
       renderLibrary();
+      return;
+    }
+
+    const wordOption = event.target.closest('[data-word-option]');
+    if (wordOption) {
+      answerWordQuestion(wordOption.dataset.wordOption);
       return;
     }
 
@@ -5132,6 +5889,7 @@
       state.timetable = normalizeClientTimetable(result.timetable);
       state.subjectVotes = normalizeClientSubjectVotes(result.subjectVotes);
       state.students = normalizeClientStudents(result.students);
+      state.wordGameScores = normalizeClientWordGameScores(result.wordGameScores);
       state.settings = result.settings && typeof result.settings === 'object' ? result.settings : {};
       state.dataPath = result.libraryPath || result.dataDir || '';
       if (!state.settings.initialized && state.items.length === 0) {

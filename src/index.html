@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: cwfile: file:; media-src 'self' blob: cwfile:; frame-src 'self' cwfile: chrome-extension:; connect-src 'self' cwfile:; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>枣庄八中 · 高中课件管理系统</title>
+  <title>枣庄八中集成桌面教学系统</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
         <span class="mini-mark" aria-hidden="true"><img src="../assets/school-badge.png" alt=""></span>
         <span class="titlebar-school">枣庄八中</span>
         <span class="titlebar-sep"></span>
-        <span class="titlebar-product">高中课件管理系统</span>
+        <span class="titlebar-product">集成桌面教学系统</span>
         <span class="edition-tag">本地版</span>
       </div>
       <div class="titlebar-grip" aria-hidden="true"></div>
@@ -79,6 +79,14 @@
               <span class="nav-text">学科提问</span>
               <span class="nav-badge" id="navQuestionCount">0</span>
             </button>
+            <button type="button" class="nav-item" data-page="ai">
+              <span class="nav-icon" data-icon="sparkles"></span>
+              <span class="nav-text">AI 解答</span>
+            </button>
+            <button type="button" class="nav-item" data-page="wordgame">
+              <span class="nav-icon" data-icon="game"></span>
+              <span class="nav-text">单词天天练</span>
+            </button>
           </nav>
 
           <nav class="nav-group" aria-label="课堂工具">
@@ -110,6 +118,14 @@
             <button type="button" class="nav-item" data-page="students">
               <span class="nav-icon" data-icon="users"></span>
               <span class="nav-text">随机点名</span>
+            </button>
+            <button type="button" class="nav-item" data-page="phone">
+              <span class="nav-icon" data-icon="phone"></span>
+              <span class="nav-text">手机投屏</span>
+            </button>
+            <button type="button" class="nav-item" data-page="timer">
+              <span class="nav-icon" data-icon="clock"></span>
+              <span class="nav-text">计时器</span>
             </button>
           </nav>
 
@@ -551,15 +567,50 @@
                   <div class="camera-empty" id="cameraEmpty"><span data-icon="camera"></span><strong>正在寻找摄像头…</strong><p>连接 USB 摄像头或展台后，画面会自动出现在这里。</p></div>
                   <span class="camera-live-badge" id="cameraLiveBadge" hidden>LIVE</span>
                   <button type="button" class="stage-exit-fullscreen" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
+                  <div class="fullscreen-toolbar" data-fullscreen-toolbar="camera">
+                    <div class="fs-swatches">
+                      <button type="button" class="drawing-color is-active" data-draw-color="#e35d5d" style="--swatch:#e35d5d"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2f7fd8" style="--swatch:#2f7fd8"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2d9d78" style="--swatch:#2d9d78"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#d99a3e" style="--swatch:#d99a3e"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#263b50" style="--swatch:#263b50"></button>
+                    </div>
+                    <button type="button" class="fs-tool" data-draw-tool="move"><span data-icon="hand"></span>鼠标</button>
+                    <button type="button" class="fs-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
+                    <button type="button" class="fs-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
+                    <button type="button" class="fs-tool" data-camera-rotate-step><span data-icon="rotate"></span>旋转</button>
+                    <button type="button" class="fs-tool" data-camera-mirror="x"><span data-icon="flip"></span>镜像</button>
+                    <span class="fs-divider"></span>
+                    <button type="button" class="fs-tool" data-zoom-action="out" data-board="camera">−</button>
+                    <span class="fs-zoom" data-zoom-label="camera">100%</span>
+                    <button type="button" class="fs-tool" data-zoom-action="in" data-board="camera">＋</button>
+                    <button type="button" class="fs-tool" data-zoom-action="reset" data-board="camera">重置</button>
+                    <button type="button" class="fs-tool fs-exit" data-exit-fullscreen><span data-icon="close"></span>退出</button>
+                  </div>
                 </div>
                 <aside class="camera-controls">
                   <div class="panel-head"><div><span class="panel-kicker">CAMERA</span><h3>摄像头与批画</h3></div></div>
                   <div class="camera-control-body">
                     <label class="question-field"><span>已连接摄像头</span><select id="cameraDeviceSelect"></select></label>
+                    <div class="camera-quality-grid">
+                      <label class="question-field"><span>采集分辨率</span><select id="cameraResolution">
+                        <option value="1920">高清 1080P</option>
+                        <option value="1280">清晰 720P</option>
+                        <option value="640">流畅 480P</option>
+                      </select></label>
+                      <label class="camera-clarity-field"><span>画面清晰度 <b id="cameraClarityValue">110%</b></span><input id="cameraClarity" type="range" min="50" max="160" step="5" value="110"></label>
+                    </div>
+                    <div class="camera-orientation-row">
+                      <span>展示方向</span>
+                      <button type="button" class="drawing-tool" data-camera-rotate-step><span data-icon="rotate"></span>旋转</button>
+                      <button type="button" class="drawing-tool" data-camera-mirror="x"><span data-icon="flip"></span>水平翻转</button>
+                      <button type="button" class="drawing-tool" data-camera-orientation-reset><span data-icon="refresh"></span>复位</button>
+                    </div>
                     <div class="camera-button-row">
                       <button type="button" class="btn btn-primary" id="cameraStart"><span data-icon="camera"></span>启动 / 重连</button>
                       <button type="button" class="btn btn-light" id="cameraStop">停止</button>
                     </div>
+                    <div class="camera-resolution-info" id="cameraResolutionInfo">等待摄像头画面…</div>
                     <button type="button" class="btn btn-soft camera-fullscreen-btn" id="cameraFullscreen"><span data-icon="monitor"></span>全屏投放</button>
                     <div class="canvas-zoom-bar">
                       <span class="drawing-label">画面缩放</span>
@@ -602,6 +653,25 @@
                     <canvas id="whiteboardCanvas"></canvas>
                   </div>
                   <button type="button" class="stage-exit-fullscreen" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
+                  <div class="fullscreen-toolbar" data-fullscreen-toolbar="whiteboard">
+                    <div class="fs-swatches">
+                      <button type="button" class="drawing-color is-active" data-draw-color="#263b50" style="--swatch:#263b50"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#e35d5d" style="--swatch:#e35d5d"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2f7fd8" style="--swatch:#2f7fd8"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2d9d78" style="--swatch:#2d9d78"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#d99a3e" style="--swatch:#d99a3e"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#7b61c9" style="--swatch:#7b61c9"></button>
+                    </div>
+                    <button type="button" class="fs-tool" data-draw-tool="move"><span data-icon="hand"></span>鼠标</button>
+                    <button type="button" class="fs-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
+                    <button type="button" class="fs-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
+                    <span class="fs-divider"></span>
+                    <button type="button" class="fs-tool" data-zoom-action="out" data-board="whiteboard">−</button>
+                    <span class="fs-zoom" data-zoom-label="whiteboard">100%</span>
+                    <button type="button" class="fs-tool" data-zoom-action="in" data-board="whiteboard">＋</button>
+                    <button type="button" class="fs-tool" data-zoom-action="reset" data-board="whiteboard">重置</button>
+                    <button type="button" class="fs-tool fs-exit" data-exit-fullscreen><span data-icon="close"></span>退出</button>
+                  </div>
                 </div>
                 <aside class="whiteboard-controls">
                   <div class="panel-head"><div><span class="panel-kicker">TOOLS</span><h3>板书工具</h3></div></div>
@@ -691,6 +761,153 @@
                     <div class="question-empty"><span data-icon="shield"></span><strong>等待检测</strong><p>选择一个 U 盘并点击「开始安全检测」，结果会显示在这里。</p></div>
                   </div>
                 </section>
+              </div>
+            </section>
+
+            <!-- AI 解答 -->
+            <section class="page-panel" id="page-ai" data-panel="ai" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> DEEPSEEK AI TUTOR</div>
+                  <h1>AI 解答</h1>
+                  <p>使用 DeepSeek 解答学科问题；API Key 使用 Windows 系统加密保存在本机，不会上传到其他位置。</p>
+                </div>
+                <div class="ai-head-badge"><span class="ai-pulse"></span><strong>DeepSeek</strong><small>AI 教学助手</small></div>
+              </div>
+              <div class="ai-layout">
+                <section class="ai-card">
+                  <div class="ai-key-bar">
+                    <label class="question-field"><span>DeepSeek API Key</span><input id="aiKeyInput" type="password" placeholder="sk-••••••••••••••••" autocomplete="off" spellcheck="false"></label>
+                    <button type="button" class="btn btn-light" id="aiSaveKey">保存 Key</button>
+                    <button type="button" class="text-button small" id="aiClearKey">清除</button>
+                  </div>
+                  <div class="ai-key-status" id="aiKeyStatus"><span></span>正在读取 API Key 状态…</div>
+                  <label class="question-field"><span>想问什么？</span><textarea id="aiQuestion" rows="5" placeholder="例如：请用高中物理的方法解释为什么卫星在轨道上处于失重状态。"></textarea></label>
+                  <div class="ai-question-actions">
+                    <span class="ai-hint">支持语文、数学、英语、物理、化学、生物、政治、历史、地理等学科</span>
+                    <button type="button" class="btn btn-primary" id="aiAskButton"><span data-icon="sparkles"></span>发送给 AI</button>
+                  </div>
+                  <div class="ai-answer-card" id="aiAnswerCard">
+                    <div class="panel-head"><div><span class="panel-kicker">AI ANSWER</span><h3>回答</h3></div><button type="button" class="text-button small" id="aiCopyAnswer" hidden><span data-icon="copy"></span>复制</button></div>
+                    <div class="ai-answer" id="aiAnswer"><div class="ai-empty"><span data-icon="sparkles"></span><strong>等待你的问题</strong><p>填写 API Key 后，输入问题即可获得解答。</p></div></div>
+                  </div>
+                </section>
+                <aside class="ai-side-card">
+                  <span class="panel-kicker">HOW TO USE</span>
+                  <h3>使用说明</h3>
+                  <ol>
+                    <li>在 DeepSeek 开放平台创建 API Key。</li>
+                    <li>粘贴到左侧并点击「保存 Key」。</li>
+                    <li>输入问题，点击「发送给 AI」。</li>
+                    <li>Key 只保存在本机，使用 Windows 加密存储。</li>
+                  </ol>
+                  <p class="ai-warning">AI 回答可能存在错误，涉及公式、史料和考试结论时请自行核对。</p>
+                </aside>
+              </div>
+            </section>
+
+            <!-- 单词天天练 -->
+            <section class="page-panel" id="page-wordgame" data-panel="wordgame" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> DAILY WORD CHALLENGE</div>
+                  <h1>单词天天练</h1>
+                  <p>从高中英语 3500 词库中随机出题，英译汉和汉译英交替出现，全部为四选一选择题。</p>
+                </div>
+                <div class="wordgame-head-badge"><span data-icon="game"></span><strong>3500</strong><small>高中英语词库</small></div>
+              </div>
+              <div class="wordgame-layout">
+                <section class="wordgame-card">
+                  <div id="wordGameStart" class="wordgame-start">
+                    <span class="panel-kicker">START A ROUND</span>
+                    <h3>开始今天的单词挑战</h3>
+                    <label class="question-field"><span>你的昵称</span><input id="wordGameNickname" maxlength="24" placeholder="输入昵称，用于记录通关排名" autocomplete="off"></label>
+                    <label class="question-field"><span>本轮单词量</span><select id="wordGameCount"><option value="10">10 个 · 热身</option><option value="20">20 个 · 日常</option><option value="30">30 个 · 进阶</option><option value="50">50 个 · 挑战</option><option value="100">100 个 · 极限</option></select></label>
+                    <button type="button" class="btn btn-primary wordgame-start-button" id="wordGameStartButton"><span data-icon="game"></span>开始答题</button>
+                    <p class="wordgame-note">题目从高中英语 3500 词库随机抽取，答完自动记录本轮成绩。</p>
+                  </div>
+                  <div id="wordGamePlay" class="wordgame-play" hidden>
+                    <div class="wordgame-meta"><span id="wordGameProgress">第 1 / 10 题</span><span id="wordGameScore">正确 0</span></div>
+                    <div class="wordgame-progress-track"><i id="wordGameProgressBar" style="width:0%"></i></div>
+                    <div class="wordgame-prompt-label" id="wordGameDirection">英译汉</div>
+                    <div class="wordgame-prompt" id="wordGamePrompt">word</div>
+                    <div class="wordgame-options" id="wordGameOptions"></div>
+                    <div class="wordgame-feedback" id="wordGameFeedback" hidden></div>
+                    <button type="button" class="btn btn-primary wordgame-next" id="wordGameNext" hidden>下一题</button>
+                  </div>
+                  <div id="wordGameResult" class="wordgame-result" hidden>
+                    <span class="wordgame-result-icon" data-icon="trophy"></span>
+                    <span class="panel-kicker">ROUND COMPLETE</span>
+                    <h3 id="wordGameResultTitle">本轮完成</h3>
+                    <div class="wordgame-result-stats"><div><strong id="wordGameResultScore">0</strong><span>正确题数</span></div><div><strong id="wordGameResultAccuracy">0%</strong><span>正确率</span></div><div><strong id="wordGameResultTime">0s</strong><span>用时</span></div></div>
+                    <div class="wordgame-result-actions"><button type="button" class="btn btn-primary" id="wordGameAgain">再来一轮</button><button type="button" class="btn btn-light" id="wordGameBack">返回开始页</button></div>
+                  </div>
+                </section>
+                <aside class="wordgame-rank-card">
+                  <div class="panel-head"><div><span class="panel-kicker">NICKNAME RANKING</span><h3>通关排名</h3></div><span class="usb-count-badge" id="wordGameRankCount">0 人</span></div>
+                  <div class="wordgame-ranking" id="wordGameRanking"></div>
+                  <p class="wordgame-rank-note">同一昵称只保留最好成绩；按正确题数优先、用时次之排序。</p>
+                </aside>
+              </div>
+            </section>
+
+            <!-- 手机投屏 -->
+            <section class="page-panel" id="page-phone" data-panel="phone" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> PHONE CAST</div>
+                  <h1>手机投屏</h1>
+                  <p>手机扫描二维码，连接同一 Wi-Fi 后将摄像头或手机屏幕投到教室电脑；蓝牙用于设备配对，不传输视频。</p>
+                </div>
+                <button type="button" class="btn btn-light" id="bluetoothSettingsButton"><span data-icon="phone"></span>打开蓝牙设置</button>
+              </div>
+              <div class="phone-layout">
+                <section class="phone-stage-card">
+                  <div class="phone-stage" id="phoneStage">
+                    <img id="phoneFrame" alt="手机投屏画面" hidden>
+                    <div class="phone-empty" id="phoneEmpty"><span data-icon="phone"></span><strong>等待手机扫码</strong><p>点击右侧「生成投屏码」，用手机扫描二维码开始。</p></div>
+                    <span class="phone-live-badge" id="phoneLiveBadge" hidden>手机投屏</span>
+                    <button type="button" class="stage-exit-fullscreen" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
+                    <button type="button" class="phone-fullscreen-button" id="phoneFullscreen"><span data-icon="monitor"></span>全屏</button>
+                  </div>
+                  <div class="phone-stage-actions">
+                    <button type="button" class="btn btn-primary" id="phoneStart"><span data-icon="wifi"></span>生成投屏码</button>
+                    <button type="button" class="btn btn-light" id="phoneStop" disabled>停止投屏</button>
+                    <span id="phoneStatus">未启动</span>
+                  </div>
+                </section>
+                <aside class="phone-qr-card">
+                  <div class="panel-head"><div><span class="panel-kicker">SCAN TO CAST</span><h3>手机扫码</h3></div><span class="phone-live-dot" id="phoneLiveDot"></span></div>
+                  <div class="phone-qr-box" id="phoneQrBox"><div class="phone-qr-placeholder"><span data-icon="phone"></span><p>点击「生成投屏码」后显示二维码</p></div></div>
+                  <div class="phone-url" id="phoneUrl">等待生成地址…</div>
+                  <ol class="phone-steps"><li>手机和电脑连接同一个 Wi-Fi。</li><li>手机扫描二维码，首次提示证书时选择继续访问。</li><li>允许摄像头或屏幕共享，即可投屏。</li></ol>
+                  <p class="phone-note">蓝牙不能传输视频画面；可点击右上角打开 Windows 蓝牙设置完成手机配对。</p>
+                </aside>
+              </div>
+            </section>
+
+            <!-- 计时器 -->
+            <section class="page-panel" id="page-timer" data-panel="timer" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> CLASSROOM TIMER</div>
+                  <h1>课堂计时器</h1>
+                  <p>用于课堂限时练习、考试倒计时或活动计时，支持全屏展示和结束提醒音。</p>
+                </div>
+                <div class="timer-head-badge"><span data-icon="clock"></span><strong id="timerModeLabel">倒计时</strong><small>课堂计时</small></div>
+              </div>
+              <div class="timer-layout">
+                <section class="timer-card" id="timerCard">
+                  <div class="timer-display" id="timerDisplay">05:00</div>
+                  <div class="timer-controls">
+                    <label class="timer-input"><span>分</span><input id="timerMinutes" type="number" min="0" max="180" value="5"></label>
+                    <label class="timer-input"><span>秒</span><input id="timerSeconds" type="number" min="0" max="59" value="0"></label>
+                  </div>
+                  <div class="timer-presets"><button type="button" data-timer-preset="60">1 分钟</button><button type="button" data-timer-preset="180">3 分钟</button><button type="button" data-timer-preset="300">5 分钟</button><button type="button" data-timer-preset="600">10 分钟</button><button type="button" data-timer-preset="900">15 分钟</button></div>
+                  <div class="timer-actions"><button type="button" class="btn btn-primary" id="timerStart"><span data-icon="clock"></span>开始计时</button><button type="button" class="btn btn-light" id="timerReset">重置</button><button type="button" class="btn btn-light" id="timerFullscreen"><span data-icon="monitor"></span>全屏</button></div>
+                  <button type="button" class="stage-exit-fullscreen timer-exit" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
+                </section>
+                <aside class="timer-side-card"><span class="panel-kicker">TIP</span><h3>使用提示</h3><p>预设时间会直接开始倒计时。最后 10 秒会高亮提示，归零时播放提示音；全屏后仍可使用「开始 / 暂停」和「重置」。</p></aside>
               </div>
             </section>
 
@@ -831,10 +1048,10 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.5.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.6.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
-                    <div><strong>枣庄八中高中课件管理系统</strong><span>本地课件资源整理工具</span></div>
+                    <div><strong>枣庄八中集成桌面教学系统</strong><span>课件管理 · 课堂互动 · 教学工具</span></div>
                   </div>
                   <ul class="about-list">
                     <li><span data-icon="check"></span>覆盖九大学科、三个年级、必修与选择性必修教材</li>

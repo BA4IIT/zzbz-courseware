@@ -1,4 +1,4 @@
-/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
+﻿/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
  * 访问 index.html?mock=1 时启用。 */
 (function () {
   'use strict';
@@ -51,6 +51,7 @@
           timetable: stored.timetable || null,
           subjectVotes: stored.subjectVotes || {},
           students: stored.students || [],
+          wordGameScores: stored.wordGameScores || [],
           updatedAt: stored.updatedAt || '',
           dataDir: '浏览器预览模式 · 数据保存在 localStorage',
           libraryPath: '浏览器预览模式',
@@ -104,8 +105,8 @@
     async checkUpdate() {
       return {
         ok: true,
-        currentVersion: '1.5.0',
-        latestVersion: '1.5.0',
+        currentVersion: '1.6.0',
+        latestVersion: '1.6.0',
         isLatest: true,
         updateAvailable: false,
         releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
@@ -123,6 +124,18 @@
     async importStudents() {
       return { ok: false, error: '浏览器预览模式不能读取本机表格。' };
     },
+    ai: {
+      async status() { return { ok: true, hasKey: false }; },
+      async saveKey() { return { ok: false, error: '浏览器预览模式不能保存 API Key。' }; },
+      async clearKey() { return { ok: true }; },
+      async ask() { return { ok: false, error: '浏览器预览模式不能调用 DeepSeek，请使用桌面程序。' }; }
+    },
+    async startPhoneCast() { return { ok: false, error: '浏览器预览模式不能启动手机投屏服务。' }; },
+    async stopPhoneCast() { return { ok: true }; },
+    async phoneCastStatus() { return { ok: true, active: false }; },
+    async openBluetoothSettings() { return { ok: false, error: '浏览器预览模式不能打开系统设置。' }; },
+    onPhoneFrame() { return () => {}; },
+    onUpdateProgress() { return () => {}; },
     browserCredentials: {
       async get() { return { ok: true, username: '', password: '', savedAt: '' }; },
       async save() { return { ok: false, error: '浏览器预览模式不能保存账号。' }; },
@@ -147,8 +160,8 @@
     async getAppInfo() {
       return {
         ok: true,
-        name: '枣庄八中高中课件管理系统',
-        version: '1.5.0',
+        name: '枣庄八中集成桌面教学系统',
+        version: '1.6.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',
