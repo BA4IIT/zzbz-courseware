@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage } = require('electron');
 const archiver = require('archiver');
+const XLSX = require('xlsx');
 const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
@@ -44,7 +45,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中高中课件管理系统';
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -221,14 +222,35 @@ function compareVersions(a, b) {
 }
 
 async function fetchLatestRelease() {
-  const response = await net.fetch(UPDATE_API, {
-    headers: {
-      'User-Agent': 'ZZBZ-Courseware-Updater',
-      Accept: 'application/vnd.github+json'
-    }
-  });
-  if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`);
-  return response.json();
+  try {
+    const response = await net.fetch(UPDATE_API, {
+      headers: {
+        'User-Agent': 'ZZBZ-Courseware-Updater',
+        Accept: 'application/vnd.github+json'
+      }
+    });
+    if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`);
+    return response.json();
+  } catch (apiError) {
+    // API 匿名额度耗尽时，退回 GitHub Release 网页，不依赖 60 次/小时的 REST 额度。
+    const page = await net.fetch(`https://github.com/${UPDATE_REPO}/releases/latest`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 ZZBZ-Courseware-Updater', Accept: 'text/html' }
+    });
+    if (!page.ok) throw apiError;
+    const tag = decodeURIComponent(String(page.url || '').split('/releases/tag/')[1] || '').split(/[?#]/)[0];
+    if (!tag) throw apiError;
+    const version = tag.replace(/^v/i, '');
+    const assetName = `zzbz-courseware-${version}-setup.exe`;
+    return {
+      tag_name: tag,
+      html_url: page.url,
+      body: '',
+      assets: [{
+        name: assetName,
+        browser_download_url: `https://github.com/${UPDATE_REPO}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`
+      }]
+    };
+  }
 }
 
 /* ---------------- U 盘检测 ---------------- */
@@ -549,6 +571,79 @@ function normalizeQuestion(raw) {
   };
 }
 
+function normalizeSubjectVotes(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result = {};
+  Object.keys(raw).slice(0, 400).forEach((date) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const day = raw[date];
+    if (!day || typeof day !== 'object' || Array.isArray(day)) return;
+    const counts = {};
+    Object.keys(day).slice(0, 30).forEach((subjectId) => {
+      const key = normalizeString(subjectId, 40);
+      const value = Math.max(0, Math.min(99999, Math.floor(Number(day[subjectId]) || 0)));
+      if (key && value) counts[key] = value;
+    });
+    if (Object.keys(counts).length) result[date] = counts;
+  });
+  return result;
+}
+
+function normalizeStudents(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 500).map((student, index) => {
+    if (!student || typeof student !== 'object') return null;
+    const name = normalizeString(student.name, 40);
+    if (!name) return null;
+    return {
+      id: normalizeString(student.id, 80) || `student-${index + 1}`,
+      name,
+      weight: Math.max(1, Math.min(20, Math.floor(Number(student.weight) || 1))),
+      pickedCount: Math.max(0, Math.floor(Number(student.pickedCount) || 0)),
+      lastPickedAt: normalizeString(student.lastPickedAt, 40)
+    };
+  }).filter(Boolean);
+}
+
+function parseStudentSheet(filePath) {
+  const workbook = XLSX.readFile(filePath, { cellDates: false });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) return [];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+  if (!rows.length) return [];
+  let headerIndex = -1;
+  let nameIndex = 0;
+  let weightIndex = 1;
+  for (let index = 0; index < Math.min(rows.length, 8); index += 1) {
+    const cells = (rows[index] || []).map((cell) => String(cell || '').trim());
+    const nameCell = cells.findIndex((cell) => /姓名|名字|学生|name|student/i.test(cell));
+    if (nameCell !== -1) {
+      headerIndex = index;
+      nameIndex = nameCell;
+      const weightCell = cells.findIndex((cell) => /权重|选中率|概率|weight|rate/i.test(cell));
+      weightIndex = weightCell === -1 ? nameIndex + 1 : weightCell;
+      break;
+    }
+  }
+  const students = [];
+  const seen = new Set();
+  for (let index = headerIndex + 1; index < rows.length; index += 1) {
+    const cells = (rows[index] || []).map((cell) => String(cell || '').trim());
+    let name = cells[nameIndex] || '';
+    if (!name) {
+      name = cells.find((cell) => cell && !/^\d+(\.\d+)?$/.test(cell) && !/姓名|名字|学生|name/i.test(cell)) || '';
+    }
+    name = normalizeString(name, 40);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const weightRaw = Number(cells[weightIndex]);
+    const weight = Number.isFinite(weightRaw) && weightRaw >= 1 ? Math.min(20, Math.floor(weightRaw)) : 1;
+    students.push({ name, weight });
+    if (students.length >= 500) break;
+  }
+  return students;
+}
+
 function normalizeLibrary(payload) {
   const rawItems = payload && Array.isArray(payload.items) ? payload.items : [];
   const items = rawItems.map(normalizeItem).filter(Boolean).slice(0, 20000);
@@ -556,7 +651,7 @@ function normalizeLibrary(payload) {
   const questions = rawQuestions.map(normalizeQuestion).filter(Boolean).slice(0, 5000);
   const rawSettings = payload && payload.settings && typeof payload.settings === 'object' ? payload.settings : {};
   return {
-    version: 3,
+    version: 4,
     school: '枣庄市第八中学',
     updatedAt: new Date().toISOString(),
     settings: {
@@ -567,7 +662,9 @@ function normalizeLibrary(payload) {
     },
     items,
     questions,
-    timetable: normalizeTimetable(payload && payload.timetable)
+    timetable: normalizeTimetable(payload && payload.timetable),
+    subjectVotes: normalizeSubjectVotes(payload && payload.subjectVotes),
+    students: normalizeStudents(payload && payload.students)
   };
 }
 
@@ -580,6 +677,8 @@ async function loadLibrary() {
       items: Array.isArray(parsed.items) ? parsed.items.map(normalizeItem).filter(Boolean) : [],
       questions: Array.isArray(parsed.questions) ? parsed.questions.map(normalizeQuestion).filter(Boolean) : [],
       timetable: normalizeTimetable(parsed.timetable),
+      subjectVotes: normalizeSubjectVotes(parsed.subjectVotes),
+      students: normalizeStudents(parsed.students),
       settings: parsed.settings || {},
       updatedAt: parsed.updatedAt || '',
       dataDir: getDataDir(),
@@ -592,6 +691,8 @@ async function loadLibrary() {
         items: [],
         questions: [],
         timetable: defaultTimetable(),
+        subjectVotes: {},
+        students: [],
         settings: {},
         updatedAt: '',
         dataDir: getDataDir(),
@@ -610,6 +711,8 @@ async function loadLibrary() {
       items: [],
       questions: [],
       timetable: defaultTimetable(),
+      subjectVotes: {},
+      students: [],
       settings: {},
       updatedAt: '',
       dataDir: getDataDir(),
@@ -1012,6 +1115,31 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle('students:import', async (_event, requestedPath) => {
+    let filePath = typeof requestedPath === 'string' && path.isAbsolute(requestedPath) ? requestedPath : '';
+    if (!filePath) {
+      const picked = await dialog.showOpenDialog(mainWindow, {
+        title: '导入学生名单',
+        buttonLabel: '导入名单',
+        properties: ['openFile'],
+        filters: [
+          { name: '表格文件', extensions: ['xlsx', 'xls', 'csv'] },
+          { name: '所有文件', extensions: ['*'] }
+        ]
+      });
+      if (picked.canceled || !picked.filePaths[0]) return { ok: true, canceled: true };
+      filePath = picked.filePaths[0];
+    }
+    try {
+      if (!/\.(xlsx|xls|csv)$/i.test(filePath)) return { ok: false, error: '只支持 .xlsx、.xls 或 .csv 表格文件' };
+      const students = parseStudentSheet(filePath);
+      if (!students.length) return { ok: false, error: '表格中没有读取到学生姓名，请确认第一列为姓名或包含「姓名」表头。' };
+      return { ok: true, students, filePath };
+    } catch (error) {
+      return { ok: false, error: `读取表格失败：${error.message}` };
+    }
+  });
+
   ipcMain.handle('browser:get-credentials', async () => readBrowserCredentials());
   ipcMain.handle('browser:save-credentials', async (_event, payload) => {
     try {
@@ -1259,7 +1387,9 @@ function createWindow() {
 
   mainWindow.webContents.on('did-attach-webview', (_event, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:/i.test(url)) shell.openExternal(url);
+      if (/^https?:/i.test(url)) {
+        contents.loadURL(url).catch(() => {});
+      }
       return { action: 'deny' };
     });
   });

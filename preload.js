@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('zzbz', {
   getAppInfo: () => ipcRenderer.invoke('app:info'),
   openDataDir: () => ipcRenderer.invoke('app:open-data-dir'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  importStudents: (filePath) => ipcRenderer.invoke('students:import', filePath),
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
   downloadUpdate: (payload) => ipcRenderer.invoke('app:download-update', payload),
   launchInstaller: (filePath) => ipcRenderer.invoke('app:launch-installer', filePath),

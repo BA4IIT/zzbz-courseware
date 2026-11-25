@@ -103,6 +103,14 @@
               <span class="nav-icon" data-icon="shield"></span>
               <span class="nav-text">U 盘检测</span>
             </button>
+            <button type="button" class="nav-item" data-page="vote">
+              <span class="nav-icon" data-icon="vote"></span>
+              <span class="nav-text">科目投票</span>
+            </button>
+            <button type="button" class="nav-item" data-page="students">
+              <span class="nav-icon" data-icon="users"></span>
+              <span class="nav-text">随机点名</span>
+            </button>
           </nav>
 
           <nav class="nav-group" aria-label="快捷视图">
@@ -488,9 +496,9 @@
                 <div>
                   <div class="page-eyebrow"><span></span> BUILT-IN BROWSER</div>
                   <h1>内置浏览器</h1>
-                  <p>固定打开 zz8zszy.cn，登录账号可加密保存在本机，打开登录页时自动填充。</p>
+                  <p>默认打开 zz8zszy.cn，地址栏可自由访问其他页面；登录账号可加密保存在本机并自动填充。</p>
                 </div>
-                <div class="browser-head-badge"><strong>zz8zszy.cn</strong><span>固定教学资源站</span></div>
+                <div class="browser-head-badge"><strong>zz8zszy.cn</strong><span>默认起始页</span></div>
               </div>
               <div class="browser-layout">
                 <section class="browser-card">
@@ -498,11 +506,12 @@
                     <button type="button" class="icon-button tiny" data-browser-back title="后退" aria-label="后退"><span data-icon="arrowLeft"></span></button>
                     <button type="button" class="icon-button tiny" data-browser-forward title="前进" aria-label="前进"><span data-icon="arrowRight"></span></button>
                     <button type="button" class="icon-button tiny" data-browser-reload title="刷新" aria-label="刷新"><span data-icon="refresh"></span></button>
-                    <div class="browser-address"><span data-icon="lock"></span><strong>https://zz8zszy.cn</strong></div>
+                    <button type="button" class="icon-button tiny" data-browser-home title="回到起始页" aria-label="回到起始页"><span data-icon="grid"></span></button>
+                    <div class="browser-address"><span data-icon="globe"></span><input id="browserAddress" type="text" value="https://zz8zszy.cn" aria-label="浏览器地址" spellcheck="false"></div>
                     <button type="button" class="text-button small" data-browser-external>在系统浏览器打开</button>
                   </div>
                   <div class="browser-frame-wrap">
-                    <webview id="siteWebview" partition="persist:zz8site"></webview>
+                    <webview id="siteWebview" partition="persist:zz8site" allowpopups></webview>
                     <div class="browser-loading" id="browserLoading"><span class="spinner"></span>正在打开 zz8zszy.cn…</div>
                   </div>
                 </section>
@@ -535,10 +544,13 @@
               </div>
               <div class="camera-layout">
                 <div class="camera-stage" id="cameraStage">
-                  <video id="cameraVideo" autoplay muted playsinline></video>
-                  <canvas id="cameraCanvas" class="camera-canvas"></canvas>
+                  <div class="camera-content" id="cameraContent">
+                    <video id="cameraVideo" autoplay muted playsinline></video>
+                    <canvas id="cameraCanvas" class="camera-canvas"></canvas>
+                  </div>
                   <div class="camera-empty" id="cameraEmpty"><span data-icon="camera"></span><strong>正在寻找摄像头…</strong><p>连接 USB 摄像头或展台后，画面会自动出现在这里。</p></div>
                   <span class="camera-live-badge" id="cameraLiveBadge" hidden>LIVE</span>
+                  <button type="button" class="stage-exit-fullscreen" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
                 </div>
                 <aside class="camera-controls">
                   <div class="panel-head"><div><span class="panel-kicker">CAMERA</span><h3>摄像头与批画</h3></div></div>
@@ -549,6 +561,13 @@
                       <button type="button" class="btn btn-light" id="cameraStop">停止</button>
                     </div>
                     <button type="button" class="btn btn-soft camera-fullscreen-btn" id="cameraFullscreen"><span data-icon="monitor"></span>全屏投放</button>
+                    <div class="canvas-zoom-bar">
+                      <span class="drawing-label">画面缩放</span>
+                      <button type="button" data-zoom-action="out" data-board="camera">−</button>
+                      <span data-zoom-label="camera">100%</span>
+                      <button type="button" data-zoom-action="in" data-board="camera">＋</button>
+                      <button type="button" data-zoom-action="reset" data-board="camera">重置</button>
+                    </div>
                     <div class="drawing-tools" id="cameraDrawingTools">
                       <span class="drawing-label">批画颜色</span>
                       <button type="button" class="drawing-color is-active" data-draw-color="#e35d5d" style="--swatch:#e35d5d"></button>
@@ -556,11 +575,12 @@
                       <button type="button" class="drawing-color" data-draw-color="#2d9d78" style="--swatch:#2d9d78"></button>
                       <button type="button" class="drawing-color" data-draw-color="#d99a3e" style="--swatch:#d99a3e"></button>
                       <button type="button" class="drawing-color" data-draw-color="#263b50" style="--swatch:#263b50"></button>
+                      <button type="button" class="drawing-tool" data-draw-tool="move"><span data-icon="hand"></span>鼠标</button>
                       <button type="button" class="drawing-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
                       <button type="button" class="drawing-tool" data-draw-clear><span data-icon="refresh"></span>清空批画</button>
                     </div>
                     <label class="drawing-width">笔迹粗细 <input type="range" id="cameraPenWidth" min="1" max="16" value="4"></label>
-                    <p class="camera-hint">提示：全屏投放后可继续用鼠标或触摸屏批画；按 Esc 退出全屏。</p>
+                    <p class="camera-hint">提示：选择「鼠标」后可拖动移动画面；滚轮也可缩放。全屏时右上角可退出。</p>
                   </div>
                 </aside>
               </div>
@@ -578,7 +598,10 @@
               </div>
               <div class="whiteboard-layout">
                 <div class="whiteboard-stage" id="whiteboardStage">
-                  <canvas id="whiteboardCanvas"></canvas>
+                  <div class="whiteboard-content" id="whiteboardContent">
+                    <canvas id="whiteboardCanvas"></canvas>
+                  </div>
+                  <button type="button" class="stage-exit-fullscreen" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
                 </div>
                 <aside class="whiteboard-controls">
                   <div class="panel-head"><div><span class="panel-kicker">TOOLS</span><h3>板书工具</h3></div></div>
@@ -592,7 +615,15 @@
                       <button type="button" class="drawing-color" data-draw-color="#d99a3e" style="--swatch:#d99a3e"></button>
                       <button type="button" class="drawing-color" data-draw-color="#7b61c9" style="--swatch:#7b61c9"></button>
                     </div>
+                    <div class="canvas-zoom-bar">
+                      <span class="drawing-label">画布缩放</span>
+                      <button type="button" data-zoom-action="out" data-board="whiteboard">−</button>
+                      <span data-zoom-label="whiteboard">100%</span>
+                      <button type="button" data-zoom-action="in" data-board="whiteboard">＋</button>
+                      <button type="button" data-zoom-action="reset" data-board="whiteboard">重置</button>
+                    </div>
                     <div class="whiteboard-tool-row">
+                      <button type="button" class="drawing-tool" data-draw-tool="move"><span data-icon="hand"></span>鼠标</button>
                       <button type="button" class="drawing-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
                       <button type="button" class="drawing-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
                     </div>
@@ -660,6 +691,75 @@
                     <div class="question-empty"><span data-icon="shield"></span><strong>等待检测</strong><p>选择一个 U 盘并点击「开始安全检测」，结果会显示在这里。</p></div>
                   </div>
                 </section>
+              </div>
+            </section>
+
+            <!-- 科目投票 -->
+            <section class="page-panel" id="page-vote" data-panel="vote" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> DAILY SUBJECT VOTE</div>
+                  <h1>科目投票</h1>
+                  <p>每天为最喜欢的学科投一票，按日期分别统计；投票结果需要管理员密码查看。</p>
+                </div>
+                <div class="vote-date-badge"><strong id="voteDateText">今天</strong><span>每日 00:00 更新</span></div>
+              </div>
+              <div class="vote-layout">
+                <section class="vote-panel">
+                  <div class="vote-panel-head">
+                    <div><span class="panel-kicker">TODAY'S VOTE</span><h3>今天喜欢哪一科？</h3></div>
+                    <span class="vote-total" id="voteTotalBadge">0 票</span>
+                  </div>
+                  <div class="subject-vote-grid" id="subjectVoteGrid"></div>
+                  <div class="vote-panel-foot">
+                    <button type="button" class="btn btn-light" id="voteResultsButton"><span data-icon="lock"></span>查看投票结果</button>
+                    <span>结果需管理员密码</span>
+                  </div>
+                </section>
+                <aside class="vote-rule-card">
+                  <span class="panel-kicker">HOW IT WORKS</span>
+                  <h3>每日学科投票</h3>
+                  <ul>
+                    <li>点击学科卡片即投出一票；同一台设备可依次由同学投票。</li>
+                    <li>票数按本地日期归档，第二天自动进入新的一天。</li>
+                    <li>投票结果默认隐藏，输入管理员密码后查看。</li>
+                    <li>所有数据只保存在本机，不上传云端。</li>
+                  </ul>
+                </aside>
+              </div>
+            </section>
+
+            <!-- 随机点名 -->
+            <section class="page-panel" id="page-students" data-panel="students" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> RANDOM STUDENT PICKER</div>
+                  <h1>随机点名</h1>
+                  <p>导入学生名单，随机抽取同学回答问题；可在后台调整每位学生的选中权重。</p>
+                </div>
+                <div class="student-head-actions">
+                  <button type="button" class="btn btn-light" id="importStudentsButton"><span data-icon="upload"></span>导入名单</button>
+                  <button type="button" class="btn btn-ghost" id="studentAdminButton"><span data-icon="lock"></span>后台设置</button>
+                </div>
+              </div>
+              <div class="student-layout">
+                <section class="student-pick-card">
+                  <div class="student-pick-stage">
+                    <span class="student-pick-label">本次抽中的同学</span>
+                    <strong id="studentPickName">准备抽取</strong>
+                    <p id="studentPickHint">导入名单后点击下方按钮开始</p>
+                  </div>
+                  <button type="button" class="btn btn-primary student-pick-button" id="pickStudentButton"><span data-icon="users"></span>随机抽取</button>
+                </section>
+                <aside class="student-side-card">
+                  <div class="panel-head"><div><span class="panel-kicker">STUDENT ROSTER</span><h3>学生名单</h3></div><span class="usb-count-badge" id="studentCountBadge">0 人</span></div>
+                  <div class="student-stats">
+                    <div><strong id="studentTotalCount">0</strong><span>总人数</span></div>
+                    <div><strong id="studentPickedTotal">0</strong><span>累计抽取</span></div>
+                  </div>
+                  <div class="student-roster" id="studentRoster"></div>
+                  <p class="student-import-hint">支持 Excel（.xlsx/.xls）或 CSV 表格，第一列姓名，可选一列「权重 / 选中率」（1—20）。</p>
+                </aside>
               </div>
             </section>
 
@@ -731,7 +831,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.4.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.5.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中高中课件管理系统</strong><span>本地课件资源整理工具</span></div>

@@ -37,6 +37,8 @@
     types: '课程分类',
     vocab: '英语 3500 词汇',
     questions: '学科提问',
+    vote: '科目投票',
+    students: '随机点名',
     browser: '内置浏览器',
     camera: '展台',
     whiteboard: '白板',
@@ -44,7 +46,8 @@
     usb: 'U 盘检测',
     data: '数据管理'
   };
-  const TOOL_PAGES = new Set(['vocab', 'questions', 'browser', 'camera', 'whiteboard', 'timetable', 'usb']);
+  const TOOL_PAGES = new Set(['vocab', 'questions', 'browser', 'camera', 'whiteboard', 'timetable', 'usb', 'vote', 'students']);
+  const ADMIN_PASSWORD = '6767';
   const TIMETABLE_DAY_FIELDS = [
     { key: 'mon', label: '周一' },
     { key: 'tue', label: '周二' },
@@ -275,6 +278,12 @@
     cameraAutoStarted: false,
     browserInitialized: false,
     browserCredentials: null,
+    subjectVotes: {},
+    students: [],
+    studentSpinning: false,
+    studentSpinTimer: 0,
+    lastPickedStudent: '',
+    adminPasswordCallback: null,
     updateChecking: false,
     updateDownloading: false,
     updateInfo: null,
@@ -1055,7 +1064,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.4.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '1.5.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1401,6 +1410,41 @@
     };
   }
 
+  function todayVoteKey() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  function normalizeClientSubjectVotes(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const result = {};
+    Object.keys(raw).slice(0, 400).forEach((date) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !raw[date] || typeof raw[date] !== 'object') return;
+      const day = {};
+      Object.keys(raw[date]).slice(0, 30).forEach((subjectId) => {
+        const count = Math.max(0, Math.min(99999, Math.floor(Number(raw[date][subjectId]) || 0)));
+        if (count) day[subjectId] = count;
+      });
+      if (Object.keys(day).length) result[date] = day;
+    });
+    return result;
+  }
+
+  function normalizeClientStudents(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.slice(0, 500).map((student, index) => {
+      if (!student || !student.name) return null;
+      return {
+        id: String(student.id || `student-${index + 1}`),
+        name: String(student.name).slice(0, 40),
+        weight: Math.max(1, Math.min(20, Math.floor(Number(student.weight) || 1))),
+        pickedCount: Math.max(0, Math.floor(Number(student.pickedCount) || 0)),
+        lastPickedAt: String(student.lastPickedAt || '')
+      };
+    }).filter(Boolean);
+  }
+
   function collectTimetableFromDom() {
     const table = $('#timetableTable');
     if (!table) return state.timetable || defaultClientTimetable();
@@ -1482,9 +1526,50 @@
   /* ---------------- 绘图工具与课堂页面 ---------------- */
 
   const drawingState = {
-    camera: { canvasId: 'cameraCanvas', color: '#e35d5d', width: 4, eraser: false, drawing: false, last: null, initialized: false },
-    whiteboard: { canvasId: 'whiteboardCanvas', color: '#263b50', width: 5, eraser: false, drawing: false, last: null, initialized: false }
+    camera: {
+      name: 'camera', canvasId: 'cameraCanvas', contentId: 'cameraContent', stageId: 'cameraStage',
+      color: '#e35d5d', width: 4, eraser: false, tool: 'pen', drawing: false, last: null,
+      zoom: 1, panX: 0, panY: 0, panning: false, panStart: null, panOrigin: null, initialized: false
+    },
+    whiteboard: {
+      name: 'whiteboard', canvasId: 'whiteboardCanvas', contentId: 'whiteboardContent', stageId: 'whiteboardStage',
+      color: '#263b50', width: 5, eraser: false, tool: 'pen', drawing: false, last: null,
+      zoom: 1, panX: 0, panY: 0, panning: false, panStart: null, panOrigin: null, initialized: false
+    }
   };
+
+  function applyBoardTransform(board) {
+    const content = document.getElementById(board.contentId);
+    if (content) content.style.transform = `translate(${board.panX}px, ${board.panY}px) scale(${board.zoom})`;
+    const label = document.querySelector(`[data-zoom-label="${board.name}"]`);
+    if (label) label.textContent = `${Math.round(board.zoom * 100)}%`;
+  }
+
+  function changeBoardZoom(board, action) {
+    if (action === 'reset') {
+      board.zoom = 1;
+      board.panX = 0;
+      board.panY = 0;
+    } else {
+      const next = board.zoom + (action === 'in' ? 0.2 : -0.2);
+      board.zoom = Math.max(0.5, Math.min(3, Number(next.toFixed(2))));
+    }
+    applyBoardTransform(board);
+  }
+
+  function setMoveTool(active) {
+    const board = activeDrawingState();
+    board.tool = active ? 'move' : 'pen';
+    board.eraser = false;
+    board.panning = false;
+    const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
+    $$('[data-draw-tool="move"]', $(scope)).forEach((button) => button.classList.toggle('is-active', active));
+    $$('[data-draw-tool="eraser"]', $(scope)).forEach((button) => button.classList.remove('is-active'));
+    $$('.drawing-color', $(scope)).forEach((button) => button.classList.toggle('is-active', !active && button.dataset.drawColor === board.color));
+    const stage = document.getElementById(board.stageId);
+    if (stage) stage.classList.toggle('is-move-tool', active);
+    if (active) applyBoardTransform(board);
+  }
 
   function activeDrawingState() {
     return state.page === 'whiteboard' ? drawingState.whiteboard : drawingState.camera;
@@ -1493,10 +1578,9 @@
   function resizeDrawingCanvas(board) {
     const canvas = document.getElementById(board.canvasId);
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(rect.width * dpr));
-    const height = Math.max(1, Math.round(rect.height * dpr));
+    const width = Math.max(1, Math.round((canvas.clientWidth || 1) * dpr));
+    const height = Math.max(1, Math.round((canvas.clientHeight || 1) * dpr));
     if (canvas.width === width && canvas.height === height) return;
     const snapshot = canvas.width > 1 && canvas.height > 1 ? canvas.toDataURL('image/png') : '';
     canvas.width = width;
@@ -1530,12 +1614,28 @@
     const canvas = document.getElementById(board.canvasId);
     if (!canvas) return;
     board.initialized = true;
-    const resize = () => resizeDrawingCanvas(board);
+    const resize = () => {
+      resizeDrawingCanvas(board);
+      applyBoardTransform(board);
+    };
     requestAnimationFrame(resize);
     if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
     window.addEventListener('resize', resize);
     canvas.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
+      if (board.tool === 'move') {
+        board.panning = true;
+        board.panStart = { x: event.clientX, y: event.clientY };
+        board.panOrigin = { x: board.panX, y: board.panY };
+        document.getElementById(board.stageId)?.classList.add('is-panning');
+        try {
+          canvas.setPointerCapture?.(event.pointerId);
+        } catch (error) {
+          /* 忽略不支持捕获的指针 */
+        }
+        event.preventDefault();
+        return;
+      }
       board.drawing = true;
       board.last = pointerPoint(canvas, event);
       drawDot(board, board.last);
@@ -1547,6 +1647,13 @@
       event.preventDefault();
     });
     canvas.addEventListener('pointermove', (event) => {
+      if (board.panning) {
+        board.panX = board.panOrigin.x + (event.clientX - board.panStart.x);
+        board.panY = board.panOrigin.y + (event.clientY - board.panStart.y);
+        applyBoardTransform(board);
+        event.preventDefault();
+        return;
+      }
       if (!board.drawing) return;
       const point = pointerPoint(canvas, event);
       drawStroke(board, board.last, point);
@@ -1554,6 +1661,14 @@
       event.preventDefault();
     });
     const end = (event) => {
+      if (board.panning) {
+        board.panning = false;
+        board.panStart = null;
+        board.panOrigin = null;
+        document.getElementById(board.stageId)?.classList.remove('is-panning');
+        event.preventDefault();
+        return;
+      }
       if (!board.drawing) return;
       board.drawing = false;
       board.last = null;
@@ -1617,19 +1732,24 @@
   function setDrawingColor(color) {
     const board = activeDrawingState();
     board.eraser = false;
+    board.tool = 'pen';
     board.color = color;
     const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
     $$('.drawing-color', $(scope)).forEach((button) => {
       button.classList.toggle('is-active', button.dataset.drawColor === color);
     });
-    $$('[data-draw-tool="eraser"]', $(scope)).forEach((button) => button.classList.remove('is-active'));
+    $$('[data-draw-tool="eraser"], [data-draw-tool="move"]', $(scope)).forEach((button) => button.classList.remove('is-active'));
+    document.getElementById(board.stageId)?.classList.remove('is-move-tool');
   }
 
   function setEraser(active) {
     const board = activeDrawingState();
     board.eraser = active;
+    board.tool = active ? 'eraser' : 'pen';
     const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
     $$('[data-draw-tool="eraser"]', $(scope)).forEach((button) => button.classList.toggle('is-active', active));
+    $$('[data-draw-tool="move"]', $(scope)).forEach((button) => button.classList.remove('is-active'));
+    document.getElementById(board.stageId)?.classList.remove('is-move-tool');
     if (active) $$('.drawing-color', $(scope)).forEach((button) => button.classList.remove('is-active'));
   }
 
@@ -1910,14 +2030,32 @@
       }
     };
     const hideLoading = () => loading?.classList.add('is-hidden');
+    const syncAddress = () => {
+      const address = $('#browserAddress');
+      try {
+        const url = webview.getURL?.();
+        if (address && url) address.value = url;
+      } catch (error) {
+        /* 页面切换中的 URL 读取失败可忽略 */
+      }
+    };
     webview.addEventListener('did-start-loading', showLoading);
     webview.addEventListener('dom-ready', () => {
       hideLoading();
+      syncAddress();
       fillBrowserCredentials(false);
       window.setTimeout(() => fillBrowserCredentials(false), 1400);
     });
-    webview.addEventListener('did-finish-load', hideLoading);
-    webview.addEventListener('did-stop-loading', hideLoading);
+    webview.addEventListener('did-finish-load', () => {
+      hideLoading();
+      syncAddress();
+    });
+    webview.addEventListener('did-stop-loading', () => {
+      hideLoading();
+      syncAddress();
+    });
+    webview.addEventListener('did-navigate', syncAddress);
+    webview.addEventListener('did-navigate-in-page', syncAddress);
     webview.addEventListener('did-fail-load', (event) => {
       if (event.errorCode === -3 || event.isMainFrame === false) return;
       if (loading) {
@@ -1940,8 +2078,24 @@
       if (action === 'back' && webview.canGoBack()) webview.goBack();
       else if (action === 'forward' && webview.canGoForward()) webview.goForward();
       else if (action === 'reload') webview.reload();
+      else if (action === 'home') webview.loadURL('https://zz8zszy.cn/');
     } catch (error) {
       showToast('浏览器操作失败', { type: 'error' });
+    }
+  }
+
+  function browserGoToAddress(value) {
+    const webview = browserWebview();
+    if (!webview) return;
+    let url = String(value || '').trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    try {
+      const parsed = new URL(url);
+      if (!/^https?:$/.test(parsed.protocol)) throw new Error('协议不支持');
+      webview.loadURL(url).catch(() => showToast('页面加载失败', { type: 'warn' }));
+    } catch (error) {
+      showToast('请输入正确的网址。', { type: 'warn' });
     }
   }
 
@@ -2193,6 +2347,17 @@
     $$('[data-browser-back]').forEach((button) => button.addEventListener('click', () => browserNavigate('back')));
     $$('[data-browser-forward]').forEach((button) => button.addEventListener('click', () => browserNavigate('forward')));
     $$('[data-browser-reload]').forEach((button) => button.addEventListener('click', () => browserNavigate('reload')));
+    $$('[data-browser-home]').forEach((button) => button.addEventListener('click', () => browserNavigate('home')));
+    const browserAddress = $('#browserAddress');
+    if (browserAddress) {
+      browserAddress.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          browserGoToAddress(browserAddress.value);
+          browserAddress.blur();
+        }
+      });
+    }
     $$('[data-browser-external]').forEach((button) => button.addEventListener('click', async () => {
       const webview = browserWebview();
       const url = webview?.getURL?.() || 'https://zz8zszy.cn';
@@ -2251,6 +2416,27 @@
     const whiteboardSave = $('#whiteboardSave');
     if (whiteboardSave) whiteboardSave.addEventListener('click', saveWhiteboardImage);
 
+    $$('[data-zoom-action]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const board = drawingState[button.dataset.board];
+        if (board) changeBoardZoom(board, button.dataset.zoomAction);
+      });
+    });
+    $$('[data-exit-fullscreen]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      });
+    });
+    [['cameraStage', drawingState.camera], ['whiteboardStage', drawingState.whiteboard]].forEach(([stageId, board]) => {
+      const stage = document.getElementById(stageId);
+      if (!stage) return;
+      stage.addEventListener('wheel', (event) => {
+        if (event.target.closest('.camera-controls, .whiteboard-controls')) return;
+        event.preventDefault();
+        changeBoardZoom(board, event.deltaY < 0 ? 'in' : 'out');
+      }, { passive: false });
+    });
+
     const addPeriod = $('#addTimetablePeriod');
     if (addPeriod) addPeriod.addEventListener('click', addTimetablePeriod);
     const saveTimetableButton = $('#saveTimetableButton');
@@ -2270,6 +2456,15 @@
         if (button) removeTimetablePeriod(Number(button.dataset.timetableRemove));
       });
     }
+
+    const voteResultsButton = $('#voteResultsButton');
+    if (voteResultsButton) voteResultsButton.addEventListener('click', showVoteResults);
+    const importStudentsButton = $('#importStudentsButton');
+    if (importStudentsButton) importStudentsButton.addEventListener('click', importStudentList);
+    const pickStudentButton = $('#pickStudentButton');
+    if (pickStudentButton) pickStudentButton.addEventListener('click', pickRandomStudent);
+    const studentAdminButton = $('#studentAdminButton');
+    if (studentAdminButton) studentAdminButton.addEventListener('click', showStudentAdmin);
 
     const refreshUsb = $('#refreshUsbDrives');
     if (refreshUsb) refreshUsb.addEventListener('click', refreshUsbDrives);
@@ -2295,6 +2490,301 @@
     });
   }
 
+  /* ---------------- 管理员密码 ---------------- */
+
+  function openAdminPassword(options) {
+    state.modal = 'admin-password';
+    state.adminPasswordCallback = options.onSuccess || null;
+    ui.modalLayer.innerHTML = `<div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="adminPasswordTitle">
+      <header class="modal-header">
+        <span class="modal-icon">${icon('lock')}</span>
+        <div class="modal-heading"><h2 id="adminPasswordTitle">${esc(options.title || '管理员验证')}</h2><p>${esc(options.message || '请输入管理员密码后继续。')}</p></div>
+        <button type="button" class="icon-button" data-close-modal aria-label="关闭">${icon('close')}</button>
+      </header>
+      <div class="modal-body">
+        <div class="admin-password-form">
+          <input id="adminPasswordInput" type="password" inputmode="numeric" maxlength="20" placeholder="请输入管理员密码" autocomplete="off">
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <span class="modal-footer-note">${icon('shield')}仅用于本机后台设置</span>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn btn-light" data-close-modal>取消</button>
+          <button type="button" class="btn btn-primary" id="adminPasswordConfirm">确认</button>
+        </div>
+      </footer>
+    </div>`;
+    ui.modalLayer.hidden = false;
+    const input = $('#adminPasswordInput');
+    input?.focus();
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        confirmAdminPassword();
+      }
+    });
+  }
+
+  function confirmAdminPassword() {
+    const input = $('#adminPasswordInput');
+    if (!input) return;
+    if (input.value !== ADMIN_PASSWORD) {
+      input.value = '';
+      input.focus();
+      showToast('管理员密码不正确。', { type: 'error' });
+      return;
+    }
+    const callback = state.adminPasswordCallback;
+    state.adminPasswordCallback = null;
+    closeModal();
+    if (typeof callback === 'function') callback();
+  }
+
+  /* ---------------- 科目投票 ---------------- */
+
+  function todayVoteData() {
+    const key = todayVoteKey();
+    if (!state.subjectVotes[key] || typeof state.subjectVotes[key] !== 'object') state.subjectVotes[key] = {};
+    return state.subjectVotes[key];
+  }
+
+  function renderVote() {
+    const key = todayVoteKey();
+    const data = state.subjectVotes[key] || {};
+    const total = Object.values(data).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    const dateNode = $('#voteDateText');
+    if (dateNode) {
+      const date = new Date(`${key}T00:00:00`);
+      dateNode.textContent = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    }
+    const totalNode = $('#voteTotalBadge');
+    if (totalNode) totalNode.textContent = `${total} 票`;
+    const grid = $('#subjectVoteGrid');
+    if (!grid) return;
+    grid.innerHTML = DATA.catalog.map((subject) => `<button type="button" class="subject-vote-card" data-vote-subject="${subject.id}" style="--subject-color:${subject.color}">
+      <span class="subject-vote-mark">${esc(subject.short)}</span>
+      <strong>${esc(subject.name)}</strong>
+      <span>投一票</span>
+    </button>`).join('');
+  }
+
+  async function voteForSubject(subjectId) {
+    const subject = DATA.subjectById[subjectId];
+    if (!subject) return;
+    const data = todayVoteData();
+    data[subjectId] = Math.min(99999, (Number(data[subjectId]) || 0) + 1);
+    renderVote();
+    await persistLibrary();
+    showToast(`已为「${subject.name}」投出一票。`, { type: 'success', duration: 1800 });
+  }
+
+  function showVoteResults() {
+    openAdminPassword({
+      title: '查看投票结果',
+      message: '请输入管理员密码查看今日各学科票数。',
+      onSuccess: openVoteResultsModal
+    });
+  }
+
+  function openVoteResultsModal() {
+    const key = todayVoteKey();
+    const data = state.subjectVotes[key] || {};
+    const rows = DATA.catalog.map((subject) => ({
+      subject,
+      votes: Number(data[subject.id]) || 0
+    })).sort((a, b) => b.votes - a.votes);
+    const total = rows.reduce((sum, row) => sum + row.votes, 0);
+    const max = Math.max(1, ...rows.map((row) => row.votes));
+    state.modal = 'vote-results';
+    ui.modalLayer.innerHTML = `<div class="modal" style="width:560px" role="dialog" aria-modal="true" aria-labelledby="voteResultsTitle">
+      <header class="modal-header">
+        <span class="modal-icon">${icon('vote')}</span>
+        <div class="modal-heading"><h2 id="voteResultsTitle">今日投票结果</h2><p>${esc(key)} · 按学科票数排序</p></div>
+        <button type="button" class="icon-button" data-close-modal aria-label="关闭">${icon('close')}</button>
+      </header>
+      <div class="modal-body">
+        <div class="vote-result-summary"><span>今日共投出 ${total} 票</span><span>仅管理员可见</span></div>
+        <div class="vote-result-list">${rows.map((row) => `<div class="vote-result-row">
+          <span class="vote-result-name">${esc(row.subject.name)}</span>
+          <div class="vote-result-track"><div class="vote-result-bar" style="width:${row.votes ? Math.max(3, (row.votes / max) * 100) : 0}%;--subject-color:${row.subject.color}"></div></div>
+          <strong>${row.votes}</strong>
+        </div>`).join('')}</div>
+      </div>
+      <footer class="modal-footer">
+        <span class="modal-footer-note">${icon('shield')}投票结果仅保存在本机</span>
+        <button type="button" class="btn btn-light" data-close-modal>关闭</button>
+      </footer>
+    </div>`;
+    ui.modalLayer.hidden = false;
+  }
+
+  /* ---------------- 随机点名 ---------------- */
+
+  function renderStudentRoster() {
+    const roster = $('#studentRoster');
+    const total = state.students.length;
+    const picked = state.students.reduce((sum, student) => sum + (Number(student.pickedCount) || 0), 0);
+    const totalNode = $('#studentTotalCount');
+    const pickedNode = $('#studentPickedTotal');
+    const countBadge = $('#studentCountBadge');
+    if (totalNode) totalNode.textContent = String(total);
+    if (pickedNode) pickedNode.textContent = String(picked);
+    if (countBadge) countBadge.textContent = `${total} 人`;
+    if (!roster) return;
+    roster.innerHTML = total
+      ? state.students.map((student) => `<span class="student-chip" title="已抽取 ${student.pickedCount} 次">${esc(student.name)}${student.pickedCount ? `<small>${student.pickedCount}</small>` : ''}</span>`).join('')
+      : '<div class="question-empty" style="grid-column:1/-1;min-height:110px;padding:16px"><strong>还没有导入名单</strong><p>支持 Excel/CSV，第一列为姓名。</p></div>';
+  }
+
+  function renderStudents() {
+    const name = $('#studentPickName');
+    if (name) {
+      name.textContent = state.lastPickedStudent || '准备抽取';
+      name.classList.toggle('is-spinning', state.studentSpinning);
+    }
+    const hint = $('#studentPickHint');
+    if (hint) hint.textContent = state.students.length ? `名单中共 ${state.students.length} 人，点击下方按钮开始` : '导入名单后点击下方按钮开始';
+    renderStudentRoster();
+  }
+
+  async function importStudentList() {
+    if (!api.importStudents) {
+      showToast('当前版本不支持导入名单。', { type: 'warn' });
+      return;
+    }
+    const result = await api.importStudents();
+    if (!result || result.canceled) return;
+    if (!result.ok) {
+      showToast(result.error || '导入名单失败', { type: 'error' });
+      return;
+    }
+    const existing = new Map(state.students.map((student) => [student.name, student]));
+    const imported = result.students || [];
+    imported.forEach((student) => {
+      const old = existing.get(student.name);
+      if (old) {
+        old.weight = old.weight || student.weight || 1;
+      } else {
+        existing.set(student.name, {
+          id: uniqueId('student'),
+          name: student.name,
+          weight: Math.max(1, Math.min(20, Number(student.weight) || 1)),
+          pickedCount: 0,
+          lastPickedAt: ''
+        });
+      }
+    });
+    state.students = Array.from(existing.values());
+    await persistLibrary();
+    renderStudents();
+    showToast(`已导入 ${imported.length} 名学生，当前名单共 ${state.students.length} 人。`, { type: 'success', title: '名单已更新', duration: 5000 });
+  }
+
+  function weightedStudentPick() {
+    const pool = state.students;
+    if (!pool.length) return null;
+    const totalWeight = pool.reduce((sum, student) => sum + Math.max(1, Number(student.weight) || 1), 0);
+    let ticket = Math.random() * totalWeight;
+    for (const student of pool) {
+      ticket -= Math.max(1, Number(student.weight) || 1);
+      if (ticket <= 0) return student;
+    }
+    return pool[pool.length - 1];
+  }
+
+  function pickRandomStudent() {
+    if (state.studentSpinning) return;
+    if (!state.students.length) {
+      showToast('请先导入学生名单。', { type: 'warn' });
+      importStudentList();
+      return;
+    }
+    state.studentSpinning = true;
+    const nameNode = $('#studentPickName');
+    const button = $('#pickStudentButton');
+    if (button) button.disabled = true;
+    if (nameNode) nameNode.classList.add('is-spinning');
+    let ticks = 0;
+    state.studentSpinTimer = window.setInterval(() => {
+      const random = state.students[Math.floor(Math.random() * state.students.length)];
+      if (nameNode) nameNode.textContent = random.name;
+      ticks += 1;
+      if (ticks >= 18) {
+        window.clearInterval(state.studentSpinTimer);
+        state.studentSpinTimer = 0;
+        const picked = weightedStudentPick();
+        if (!picked) {
+          state.studentSpinning = false;
+          if (button) button.disabled = false;
+          return;
+        }
+        picked.pickedCount = (Number(picked.pickedCount) || 0) + 1;
+        picked.lastPickedAt = new Date().toISOString();
+        state.lastPickedStudent = picked.name;
+        state.studentSpinning = false;
+        if (nameNode) {
+          nameNode.textContent = picked.name;
+          nameNode.classList.remove('is-spinning');
+        }
+        if (button) button.disabled = false;
+        const hint = $('#studentPickHint');
+        if (hint) hint.textContent = `请 ${picked.name} 回答问题`;
+        renderStudentRoster();
+        persistLibrary();
+      }
+    }, 70);
+  }
+
+  function showStudentAdmin() {
+    if (!state.students.length) {
+      showToast('请先导入学生名单。', { type: 'warn' });
+      return;
+    }
+    openAdminPassword({
+      title: '随机点名后台设置',
+      message: '请输入管理员密码调整学生选中权重。',
+      onSuccess: openStudentWeightsModal
+    });
+  }
+
+  function openStudentWeightsModal() {
+    state.modal = 'student-weights';
+    ui.modalLayer.innerHTML = `<div class="modal" style="width:540px" role="dialog" aria-modal="true" aria-labelledby="studentWeightsTitle">
+      <header class="modal-header">
+        <span class="modal-icon">${icon('users')}</span>
+        <div class="modal-heading"><h2 id="studentWeightsTitle">调整学生选中率</h2><p>权重 1—20，数字越大被抽中的概率越高；修改后保存。</p></div>
+        <button type="button" class="icon-button" data-close-modal aria-label="关闭">${icon('close')}</button>
+      </header>
+      <div class="modal-body">
+        <div class="student-weight-table">${state.students.map((student) => `<div class="student-weight-row">
+          <span title="${attr(student.name)}">${esc(student.name)}</span>
+          <input class="student-weight-input" type="number" min="1" max="20" value="${Math.max(1, Number(student.weight) || 1)}" data-student-weight="${attr(student.id)}" aria-label="${attr(student.name)} 的选中权重">
+          <small>${student.pickedCount || 0} 次</small>
+        </div>`).join('')}</div>
+      </div>
+      <footer class="modal-footer">
+        <span class="modal-footer-note">${icon('shield')}默认权重均为 1</span>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn btn-light" data-close-modal>取消</button>
+          <button type="button" class="btn btn-primary" id="saveStudentWeights">保存权重</button>
+        </div>
+      </footer>
+    </div>`;
+    ui.modalLayer.hidden = false;
+  }
+
+  async function saveStudentWeights() {
+    $$('[data-student-weight]').forEach((input) => {
+      const student = state.students.find((entry) => entry.id === input.dataset.studentWeight);
+      if (student) student.weight = Math.max(1, Math.min(20, Math.floor(Number(input.value) || 1)));
+    });
+    const ok = await persistLibrary();
+    if (!ok) return;
+    closeModal();
+    renderStudents();
+    showToast('学生选中权重已保存。', { type: 'success', title: '后台设置已更新' });
+  }
+
   function renderAll() {
     renderChrome();
     renderLibrary();
@@ -2307,6 +2797,8 @@
     if (state.page === 'whiteboard') renderWhiteboard();
     if (state.page === 'timetable') renderTimetable();
     if (state.page === 'usb') renderUsb();
+    if (state.page === 'vote') renderVote();
+    if (state.page === 'students') renderStudents();
     if (state.page === 'data') renderData();
   }
 
@@ -3354,6 +3846,7 @@
     state.batchDeleteBusy = false;
     state.updateInfo = null;
     state.updateDownloading = false;
+    state.adminPasswordCallback = null;
     ui.modalLayer.hidden = true;
     ui.modalLayer.innerHTML = '';
   }
@@ -3437,8 +3930,10 @@
           </ul>
           <h3>课堂工具</h3>
           <ul class="help-list">
-            <li><strong>内置浏览器</strong>：固定打开 zz8zszy.cn，可在右侧加密保存账号密码，登录页自动填充。</li>
-            <li><strong>展台 / 白板</strong>：自动连接摄像头并可全屏投放，支持多色批画、橡皮；白板可保存 PNG。</li>
+            <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址；可在右侧加密保存账号密码，登录页自动填充。</li>
+            <li><strong>展台 / 白板</strong>：自动连接摄像头并可全屏投放，支持缩放、鼠标移动、多色批画、橡皮；全屏时右上角可退出，白板可保存 PNG。</li>
+            <li><strong>科目投票</strong>：每天按日期为学科投票，查看结果需要管理员密码。</li>
+            <li><strong>随机点名</strong>：导入 Excel/CSV 名单，按可调权重随机抽取学生；后台设置需要管理员密码。</li>
             <li><strong>课程表</strong>：直接修改节次、时间和课程，周六/周日可切换 A 表/B 表。</li>
             <li><strong>U 盘检测</strong>：检查可疑可执行文件、伪装文档和 autorun 项，也可调用 Windows Defender。</li>
             <li><strong>检查更新</strong>：右上角刷新图标，或「数据管理 → 关于系统 → 检查更新」。</li>
@@ -3507,6 +4002,8 @@
         items: state.items,
         questions: state.questions,
         timetable: state.timetable,
+        subjectVotes: state.subjectVotes,
+        students: state.students,
         settings: state.settings
       });
       if (!result || !result.ok) throw new Error(result?.error || '保存失败');
@@ -3576,6 +4073,8 @@
     if (page === 'whiteboard') renderWhiteboard();
     if (page === 'timetable') renderTimetable();
     if (page === 'usb') renderUsb();
+    if (page === 'vote') renderVote();
+    if (page === 'students') renderStudents();
     if (page === 'data') renderData();
     if (!options || options.scroll !== false) ui.mainScroll.scrollTop = 0;
   }
@@ -3679,13 +4178,15 @@
   async function exportJson() {
     const backup = {
       app: '枣庄八中高中课件管理系统',
-      formatVersion: 3,
+      formatVersion: 4,
       school: '枣庄市第八中学',
       exportedAt: new Date().toISOString(),
       settings: { ...state.settings, initialized: true },
       items: state.items,
       questions: state.questions,
-      timetable: state.timetable
+      timetable: state.timetable,
+      subjectVotes: state.subjectVotes,
+      students: state.students
     };
     const result = await api.saveText({
       title: '导出课件库数据备份',
@@ -3772,6 +4273,10 @@
     const backupQuestions = hasBackupQuestions ? sanitizeBackupQuestions(parsed.questions) : state.questions.slice();
     const hasBackupTimetable = Boolean(parsed.timetable && Array.isArray(parsed.timetable.periods));
     const backupTimetable = normalizeClientTimetable(parsed.timetable);
+    const hasBackupVotes = Boolean(parsed.subjectVotes && typeof parsed.subjectVotes === 'object');
+    const backupVotes = normalizeClientSubjectVotes(parsed.subjectVotes);
+    const hasBackupStudents = Array.isArray(parsed.students);
+    const backupStudents = normalizeClientStudents(parsed.students);
     const questionMessage = hasBackupQuestions
       ? `备份中的 <strong>${backupQuestions.length}</strong> 条学科提问`
       : `当前 <strong>${backupQuestions.length}</strong> 条学科提问（旧备份未包含）`;
@@ -3784,6 +4289,8 @@
         state.items = backupItems;
         state.questions = backupQuestions;
         if (hasBackupTimetable) state.timetable = backupTimetable;
+        if (hasBackupVotes) state.subjectVotes = backupVotes;
+        if (hasBackupStudents) state.students = backupStudents;
         state.questionVoteEditId = '';
         state.settings = {
           ...(parsed.settings || {}),
@@ -4040,9 +4547,21 @@
       return;
     }
 
+    const voteSubjectButton = event.target.closest('[data-vote-subject]');
+    if (voteSubjectButton) {
+      voteForSubject(voteSubjectButton.dataset.voteSubject);
+      return;
+    }
+
     const drawColorButton = event.target.closest('[data-draw-color]');
     if (drawColorButton && (state.page === 'camera' || state.page === 'whiteboard')) {
       setDrawingColor(drawColorButton.dataset.drawColor);
+      return;
+    }
+
+    const moveToolButton = event.target.closest('[data-draw-tool="move"]');
+    if (moveToolButton && (state.page === 'camera' || state.page === 'whiteboard')) {
+      setMoveTool(activeDrawingState().tool !== 'move');
       return;
     }
 
@@ -4400,6 +4919,14 @@
         startBatchDelete();
         return;
       }
+      if (event.target.closest('#adminPasswordConfirm')) {
+        confirmAdminPassword();
+        return;
+      }
+      if (event.target.closest('#saveStudentWeights')) {
+        saveStudentWeights();
+        return;
+      }
       const sourceButton = event.target.closest('[data-import-source]');
       if (sourceButton) {
         startImportScan(sourceButton.dataset.importSource);
@@ -4603,6 +5130,8 @@
       state.items = Array.isArray(result.items) ? result.items.filter((item) => item && item.id && item.name) : [];
       state.questions = Array.isArray(result.questions) ? result.questions.filter((q) => q && q.id && q.title) : [];
       state.timetable = normalizeClientTimetable(result.timetable);
+      state.subjectVotes = normalizeClientSubjectVotes(result.subjectVotes);
+      state.students = normalizeClientStudents(result.students);
       state.settings = result.settings && typeof result.settings === 'object' ? result.settings : {};
       state.dataPath = result.libraryPath || result.dataDir || '';
       if (!state.settings.initialized && state.items.length === 0) {

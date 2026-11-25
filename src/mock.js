@@ -47,6 +47,10 @@
           ok: true,
           items: stored.items || [],
           settings: stored.settings || {},
+          questions: stored.questions || [],
+          timetable: stored.timetable || null,
+          subjectVotes: stored.subjectVotes || {},
+          students: stored.students || [],
           updatedAt: stored.updatedAt || '',
           dataDir: '浏览器预览模式 · 数据保存在 localStorage',
           libraryPath: '浏览器预览模式',
@@ -100,8 +104,8 @@
     async checkUpdate() {
       return {
         ok: true,
-        currentVersion: '1.4.0',
-        latestVersion: '1.4.0',
+        currentVersion: '1.5.0',
+        latestVersion: '1.5.0',
         isLatest: true,
         updateAvailable: false,
         releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
@@ -115,6 +119,9 @@
     },
     async launchInstaller() {
       return { ok: false, error: '浏览器预览模式不能打开安装包。' };
+    },
+    async importStudents() {
+      return { ok: false, error: '浏览器预览模式不能读取本机表格。' };
     },
     browserCredentials: {
       async get() { return { ok: true, username: '', password: '', savedAt: '' }; },
@@ -141,7 +148,7 @@
       return {
         ok: true,
         name: '枣庄八中高中课件管理系统',
-        version: '1.4.0',
+        version: '1.5.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',
