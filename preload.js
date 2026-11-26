@@ -39,7 +39,9 @@ contextBridge.exposeInMainWorld('zzbz', {
     status: () => ipcRenderer.invoke('ai:key-status'),
     saveKey: (key) => ipcRenderer.invoke('ai:save-key', key),
     clearKey: () => ipcRenderer.invoke('ai:clear-key'),
-    ask: (question) => ipcRenderer.invoke('ai:ask', question)
+    ask: (question) => ipcRenderer.invoke('ai:ask', question),
+    readFile: (filePath) => ipcRenderer.invoke('ai:read-file', filePath),
+    ocrImage: (filePath) => ipcRenderer.invoke('ocr:image', filePath)
   },
   startPhoneCast: () => ipcRenderer.invoke('phone:start'),
   stopPhoneCast: () => ipcRenderer.invoke('phone:stop'),
@@ -55,6 +57,7 @@ contextBridge.exposeInMainWorld('zzbz', {
     ipcRenderer.on('update:progress', handler);
     return () => ipcRenderer.removeListener('update:progress', handler);
   },
+  searchPolitics: (payload) => ipcRenderer.invoke('politics:search', payload),
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
   downloadUpdate: (payload) => ipcRenderer.invoke('app:download-update', payload),
   launchInstaller: (filePath) => ipcRenderer.invoke('app:launch-installer', filePath),

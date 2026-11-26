@@ -1,8 +1,10 @@
-﻿'use strict';
+'use strict';
 
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage } = require('electron');
 const archiver = require('archiver');
 const XLSX = require('xlsx');
+const mammoth = require('mammoth');
+const pdfParse = require('pdf-parse');
 const QRCode = require('qrcode');
 const { WebSocketServer } = require('ws');
 const selfsigned = require('selfsigned');
@@ -51,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -682,7 +684,20 @@ function normalizeLibrary(payload) {
       initialized: Boolean(rawSettings.initialized),
       demoDismissed: Boolean(rawSettings.demoDismissed),
       lastSubject: normalizeString(rawSettings.lastSubject, 40),
-      theme: 'light-blue'
+      theme: 'light-blue',
+      ai: {
+        model: ['deepseek-chat', 'deepseek-reasoner'].includes(rawSettings.ai && rawSettings.ai.model)
+          ? rawSettings.ai.model
+          : 'deepseek-chat',
+        reasoning: ['fast', 'standard', 'deep'].includes(rawSettings.ai && rawSettings.ai.reasoning)
+          ? rawSettings.ai.reasoning
+          : 'standard'
+      },
+      danmaku: {
+        enabled: rawSettings.danmaku && rawSettings.danmaku.enabled !== false,
+        speed: Math.max(20, Math.min(100, Math.floor(Number(rawSettings.danmaku && rawSettings.danmaku.speed) || 45))),
+        fontSize: Math.max(12, Math.min(30, Math.floor(Number(rawSettings.danmaku && rawSettings.danmaku.fontSize) || 18)))
+      }
     },
     items,
     questions,
@@ -777,9 +792,18 @@ async function saveAiKey(rawKey) {
   return { ok: true };
 }
 
-async function askDeepSeek(question) {
-  const text = normalizeString(question, 8000);
+async function askDeepSeek(payload) {
+  const request = payload && typeof payload === 'object' ? payload : { question: payload };
+  const text = normalizeString(request.question, 12000);
   if (text.length < 1) return { ok: false, error: '请输入问题' };
+  const requestedModel = ['deepseek-chat', 'deepseek-reasoner'].includes(request.model) ? request.model : 'deepseek-chat';
+  const reasoning = ['fast', 'standard', 'deep'].includes(request.reasoning) ? request.reasoning : 'standard';
+  const model = reasoning === 'deep' ? 'deepseek-reasoner' : requestedModel;
+  const maxTokens = reasoning === 'fast' ? 900 : reasoning === 'deep' ? 3600 : 1800;
+  const temperature = reasoning === 'fast' ? 0.5 : reasoning === 'deep' ? 0.2 : 0.35;
+  const systemPrompt = reasoning === 'deep'
+    ? '你是枣庄八中集成桌面教学系统的 AI 教学助手。请先分析问题的关键条件，再给出严谨、分步骤的解答；涉及公式时写清推导，涉及事实时不要编造，最后给出简明结论。'
+    : '你是枣庄八中集成桌面教学系统的 AI 教学助手。请用简洁、准确、适合高中生理解的中文回答；涉及解题时先给思路，再给关键步骤，不要编造教材页码或事实。';
   const stored = await readAiKey();
   if (!stored.ok) return stored;
   if (!stored.key) return { ok: false, error: '请先填写并保存 DeepSeek API Key' };
@@ -794,14 +818,11 @@ async function askDeepSeek(question) {
         Accept: 'application/json'
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
-        temperature: 0.35,
-        max_tokens: 1600,
+        model,
+        temperature,
+        max_tokens: maxTokens,
         messages: [
-          {
-            role: 'system',
-            content: '你是枣庄八中集成桌面教学系统的 AI 教学助手。请用简洁、准确、适合高中生理解的中文回答；涉及解题时先给思路，再给关键步骤，不要编造教材页码或事实。'
-          },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: text }
         ]
       }),
@@ -917,6 +938,219 @@ async function startPhoneCast() {
   });
   phoneCast = { server, wss, token, url, qr, ip, port };
   return { ok: true, url, qr, ip, port };
+}
+
+async function readAiAttachment(requestedPath) {
+  let filePath = typeof requestedPath === 'string' && path.isAbsolute(requestedPath) ? requestedPath : '';
+  if (!filePath) {
+    const picked = await dialog.showOpenDialog(mainWindow, {
+      title: '选择要附加给 AI 的文件',
+      properties: ['openFile'],
+      filters: [
+        { name: '文档', extensions: ['txt', 'md', 'csv', 'json', 'log', 'pdf', 'docx', 'xlsx', 'xls'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { ok: true, canceled: true };
+    filePath = picked.filePaths[0];
+  }
+  const ext = path.extname(filePath).toLowerCase();
+  try {
+    let text = '';
+    if (ext === '.pdf') {
+      const parsed = await pdfParse(await fsp.readFile(filePath));
+      text = parsed.text || '';
+    } else if (ext === '.docx') {
+      const parsed = await mammoth.extractRawText({ buffer: await fsp.readFile(filePath) });
+      text = parsed.value || '';
+    } else if (ext === '.xlsx' || ext === '.xls') {
+      const workbook = XLSX.readFile(filePath, { cellDates: false });
+      text = workbook.SheetNames.map((name) => {
+        const sheet = workbook.Sheets[name];
+        return `工作表：${name}\n${XLSX.utils.sheet_to_csv(sheet)}`;
+      }).join('\n\n');
+    } else if (['.txt', '.md', '.csv', '.json', '.log'].includes(ext)) {
+      text = await fsp.readFile(filePath, 'utf8');
+    } else {
+      return { ok: false, error: '暂不支持该文件类型，请上传 PDF、Word、Excel、TXT 或 Markdown。' };
+    }
+    text = text.replace(/\u0000/g, '').trim();
+    if (!text) return { ok: false, error: '文件中没有可读取的文字。' };
+    const maxChars = 24000;
+    return {
+      ok: true,
+      name: path.basename(filePath),
+      text: text.slice(0, maxChars),
+      truncated: text.length > maxChars
+    };
+  } catch (error) {
+    return { ok: false, error: `读取文件失败：${error.message}` };
+  }
+}
+
+const OCR_SCRIPT = String.raw`param([string]$Path)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Storage.Streams.InMemoryRandomAccessStream, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Storage.Streams.DataWriter, Windows.Foundation, ContentType=WindowsRuntime]
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -like 'IAsyncOperation*' })[0]
+function Await($WinRtTask, $ResultType) {
+  $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+  $netTask = $asTask.Invoke($null, @($WinRtTask))
+  $netTask.Wait(-1) | Out-Null
+  $netTask.Result
+}
+$bytes = [System.IO.File]::ReadAllBytes($Path)
+$stream = [Windows.Storage.Streams.InMemoryRandomAccessStream]::new()
+$writer = [Windows.Storage.Streams.DataWriter]::new($stream)
+$writer.WriteBytes($bytes)
+$null = Await ($writer.StoreAsync()) ([uint32])
+$writer.DetachStream() | Out-Null
+$stream.Seek(0)
+$decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+if (-not $engine) { Write-Output 'NO_ENGINE'; exit 2 }
+$result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+Write-Output $result.Text
+`;
+
+async function ocrImageFile(requestedPath) {
+  let filePath = typeof requestedPath === 'string' && path.isAbsolute(requestedPath) ? requestedPath : '';
+  if (!filePath) {
+    const picked = await dialog.showOpenDialog(mainWindow, {
+      title: '选择要识别文字的照片',
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'webp', 'tif', 'tiff'] }]
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { ok: true, canceled: true };
+    filePath = picked.filePaths[0];
+  }
+  filePath = filePath.replace(/\//g, '\\');
+  const scriptPath = path.join(RUNTIME_DIR, 'ocr.ps1');
+  try {
+    await fsp.writeFile(scriptPath, OCR_SCRIPT, 'utf8');
+    const { stdout, stderr } = await execFileAsync('powershell.exe', [
+      '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Path', filePath
+    ], { timeout: 90000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+    const text = String(stdout || '').replace(/NO_ENGINE/g, '').trim();
+    if (!text) {
+      return { ok: false, error: '没有识别到文字，请换一张更清晰的照片，或确认 Windows 已安装中文 OCR 语言包。' };
+    }
+    return { ok: true, name: path.basename(filePath), text: text.slice(0, 16000), imagePath: filePath };
+  } catch (error) {
+    return { ok: false, error: `照片识别失败：${error.message}` };
+  }
+}
+
+const POLITICS_FEEDS = [
+  { source: '人民网', url: 'https://www.people.com.cn/rss/politics.xml' },
+  { source: '新华网', url: 'https://www.xinhuanet.com/politics/news_politics.xml' },
+  { source: '中国新闻网', url: 'https://www.chinanews.com.cn/rss/scroll-news.xml' },
+  { source: '人民网·国际', url: 'https://www.people.com.cn/rss/world.xml' }
+];
+
+function stripXmlTags(value) {
+  return String(value || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseRssItems(xml, source) {
+  const items = [];
+  const matches = String(xml || '').match(/<item\b[\s\S]*?<\/item>/gi) || [];
+  for (const block of matches.slice(0, 80)) {
+    const read = (tag) => {
+      const match = block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+      return match ? stripXmlTags(match[1]) : '';
+    };
+    const title = read('title');
+    const link = read('link') || (block.match(/<link[^>]*href=["']([^"']+)["']/i) || [])[1] || '';
+    const description = read('description') || read('summary');
+    const dateText = read('pubDate') || read('updated') || read('published');
+    const publishedAt = dateText ? new Date(dateText) : new Date();
+    if (!title || !link) continue;
+    items.push({
+      title,
+      link,
+      description: description.slice(0, 500),
+      source,
+      publishedAt: Number.isNaN(publishedAt.getTime()) ? new Date().toISOString() : publishedAt.toISOString()
+    });
+  }
+  return items;
+}
+
+async function fetchPoliticalNews(days) {
+  const since = Date.now() - Math.max(1, Math.min(30, Number(days) || 7)) * 24 * 60 * 60 * 1000;
+  const results = await Promise.allSettled(POLITICS_FEEDS.map(async (feed) => {
+    const response = await net.fetch(feed.url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 ZZBZ-Courseware-News', Accept: 'application/rss+xml,text/xml,text/html' }
+    });
+    if (!response.ok) throw new Error(`${feed.source} RSS ${response.status}`);
+    return parseRssItems(await response.text(), feed.source);
+  }));
+  const seen = new Set();
+  const items = [];
+  results.forEach((result) => {
+    if (result.status !== 'fulfilled') return;
+    result.value.forEach((item) => {
+      const key = item.title.replace(/\s+/g, '');
+      if (seen.has(key)) return;
+      const time = new Date(item.publishedAt).getTime();
+      if (Number.isFinite(time) && time < since) return;
+      seen.add(key);
+      items.push(item);
+    });
+  });
+  return items.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)).slice(0, 45);
+}
+
+function keywordChapterMatch(item, chapters) {
+  const text = `${item.title} ${item.description}`;
+  let best = null;
+  let bestScore = 0;
+  chapters.forEach((chapter) => {
+    const words = String(chapter)
+      .replace(/^(第[一二三四五六七八九十百]+[课单元章节]|必修|选择性必修|选择性|单元|专题)/g, '')
+      .split(/[、，,：:；;（）()\s]+/)
+      .filter((word) => word.length >= 2);
+    const score = words.reduce((sum, word) => sum + (text.includes(word) ? word.length : 0), 0);
+    if (score > bestScore) { bestScore = score; best = chapter; }
+  });
+  return bestScore > 0 ? best : '综合';
+}
+
+function extractAiJson(text) {
+  const source = String(text || '').replace(/```(?:json)?/gi, '').replace(/```/g, '');
+  const start = source.indexOf('[');
+  const end = source.lastIndexOf(']');
+  if (start === -1 || end <= start) return null;
+  try { return JSON.parse(source.slice(start, end + 1)); } catch (error) { return null; }
+}
+
+async function analyzePoliticalNews(items, chapters, model, reasoning) {
+  const compact = items.map((item, index) => ({
+    index,
+    title: item.title,
+    summary: String(item.description || '').slice(0, 220)
+  }));
+  const prompt = `你是高中政治时事政治备课助手。请从下面的新闻中筛选适合高中政治课堂、并可能与给定教材章节对应的新闻。\n\n可选章节：\n${chapters.map((chapter, index) => `${index + 1}. ${chapter}`).join('\n')}\n\n新闻列表（JSON）：\n${JSON.stringify(compact)}\n\n请严格输出 JSON 数组，不要输出其他文字。每项格式：{"index":新闻序号,"chapter":"最对应的章节原文","summary":"不超过80字的新闻要点说明"}。只保留与政治教材章节相关的新闻，最多20条。不要编造新闻或链接。`;
+  const result = await askDeepSeek({ question: prompt, model: model || 'deepseek-chat', reasoning: reasoning || 'standard' });
+  if (!result.ok) return { ok: false, error: result.error };
+  const parsed = extractAiJson(result.answer);
+  if (!Array.isArray(parsed)) return { ok: false, error: 'AI 返回格式无法解析' };
+  return { ok: true, data: parsed };
 }
 
 function registerIpc() {
@@ -1351,7 +1585,59 @@ function registerIpc() {
     await fsp.unlink(getAiKeyPath()).catch(() => {});
     return { ok: true };
   });
-  ipcMain.handle('ai:ask', async (_event, question) => askDeepSeek(question));
+  ipcMain.handle('ai:ask', async (_event, payload) => askDeepSeek(payload));
+  ipcMain.handle('ai:read-file', async (_event, filePath) => readAiAttachment(filePath));
+  ipcMain.handle('ocr:image', async (_event, filePath) => ocrImageFile(filePath));
+  ipcMain.handle('politics:search', async (_event, payload) => {
+    const days = Math.max(1, Math.min(30, Number(payload && payload.days) || 7));
+    const chapters = (Array.isArray(payload && payload.chapters) ? payload.chapters : [])
+      .map((chapter) => normalizeString(chapter, 160))
+      .filter(Boolean)
+      .slice(0, 120);
+    try {
+      const news = await fetchPoliticalNews(days);
+      if (!news.length) return { ok: false, error: '暂时没有抓取到最近新闻，请检查网络后重试。' };
+      const keyResult = await readAiKey();
+      let aiUsed = false;
+      let warning = '';
+      let data = [];
+      if (keyResult.ok && keyResult.key) {
+        const analyzed = await analyzePoliticalNews(news, chapters.length ? chapters : ['综合'], payload && payload.model, payload && payload.reasoning);
+        if (analyzed.ok) {
+          data = analyzed.data;
+          aiUsed = true;
+        } else {
+          warning = `AI 章节分析未完成：${analyzed.error}。已使用关键词匹配。`;
+        }
+      } else {
+        warning = '未在「通用设置」中填写 DeepSeek API Key，当前仅按关键词匹配章节。';
+      }
+      const selected = new Map();
+      data.forEach((entry) => {
+        const index = Number(entry && entry.index);
+        const item = news[index];
+        if (!item) return;
+        const chapter = normalizeString(entry.chapter, 160) || keywordChapterMatch(item, chapters.length ? chapters : ['综合']);
+        selected.set(index, {
+          ...item,
+          chapter,
+          summary: normalizeString(entry.summary, 300) || item.description.slice(0, 160)
+        });
+      });
+      let items = [...selected.values()];
+      if (!items.length) {
+        items = news.slice(0, 24).map((item) => ({
+          ...item,
+          chapter: keywordChapterMatch(item, chapters.length ? chapters : ['综合']),
+          summary: item.description.slice(0, 160)
+        }));
+        if (aiUsed) warning = 'AI 没有筛出与所选章节直接相关的新闻，已展示最新权威新闻供参考。';
+      }
+      return { ok: true, items: items.slice(0, 24), aiUsed, warning, fetchedAt: new Date().toISOString() };
+    } catch (error) {
+      return { ok: false, error: `时事政治查询失败：${error.message}` };
+    }
+  });
 
   ipcMain.handle('browser:get-credentials', async () => readBrowserCredentials());
   ipcMain.handle('browser:save-credentials', async (_event, payload) => {

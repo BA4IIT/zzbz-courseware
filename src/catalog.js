@@ -87,48 +87,48 @@
       ]
     },
     {
-      id: 'english', name: '英语', short: '英', edition: '人教版', color: '#2f9fd0',
+      id: 'english', name: '英语', short: '英', edition: '外研版', color: '#2f9fd0',
       books: [
         {
           id: 'yy-bx1', name: '必修第一册', grades: ['高一'], chapters: [
-            'Welcome Unit', 'Unit 1 Teenage Life', 'Unit 2 Travelling Around',
-            'Unit 3 Sports and Fitness', 'Unit 4 Natural Disasters', 'Unit 5 Languages Around the World'
+            'Unit 1 A new start', 'Unit 2 Exploring English', 'Unit 3 Family matters',
+            'Unit 4 Friends forever', 'Unit 5 Into the wild', 'Unit 6 At one with nature'
           ]
         },
         {
           id: 'yy-bx2', name: '必修第二册', grades: ['高一'], chapters: [
-            'Unit 1 Cultural Heritage', 'Unit 2 Wildlife Protection', 'Unit 3 The Internet',
-            'Unit 4 History and Traditions', 'Unit 5 Music'
+            'Unit 1 Food for thought', 'Unit 2 Let\'s celebrate!', 'Unit 3 On the move',
+            'Unit 4 Stage and screen', 'Unit 5 On the road', 'Unit 6 Earth first'
           ]
         },
         {
           id: 'yy-bx3', name: '必修第三册', grades: ['高一', '高二'], chapters: [
-            'Unit 1 Festivals and Celebrations', 'Unit 2 Morals and Virtues', 'Unit 3 Diverse Cultures',
-            'Unit 4 Space Exploration', 'Unit 5 The Value of Money'
+            'Unit 1 Knowing me, knowing you', 'Unit 2 Making a difference', 'Unit 3 The world of science',
+            'Unit 4 Amazing art', 'Unit 5 What an adventure!', 'Unit 6 Disaster and hope'
           ]
         },
         {
           id: 'yy-xb1', name: '选择性必修第一册', grades: ['高二'], chapters: [
-            'Unit 1 People of Achievement', 'Unit 2 Looking into the Future', 'Unit 3 Fascinating Parks',
-            'Unit 4 Body Language', 'Unit 5 Working the Land'
+            'Unit 1 Laugh out loud!', 'Unit 2 Onwards and upwards', 'Unit 3 Faster, higher, stronger',
+            'Unit 4 Meeting the muse', 'Unit 5 Revealing nature', 'Unit 6 Nurturing nature'
           ]
         },
         {
           id: 'yy-xb2', name: '选择性必修第二册', grades: ['高二'], chapters: [
-            'Unit 1 Science and Scientists', 'Unit 2 Bridging Cultures', 'Unit 3 Food and Culture',
-            'Unit 4 Journey Across a Vast Land', 'Unit 5 First Aid'
+            'Unit 1 Growing up', 'Unit 2 Improving yourself', 'Unit 3 Times change!',
+            'Unit 4 Breaking boundaries', 'Unit 5 A delicate world', 'Unit 6 Survival'
           ]
         },
         {
           id: 'yy-xb3', name: '选择性必修第三册', grades: ['高二'], chapters: [
-            'Unit 1 Art', 'Unit 2 Healthy Lifestyle', 'Unit 3 Environmental Protection',
-            'Unit 4 Adversity and Courage', 'Unit 5 Poems'
+            'Unit 1 Face values', 'Unit 2 A life\'s work', 'Unit 3 War and peace',
+            'Unit 4 A glimpse of the future', 'Unit 5 Learning from nature', 'Unit 6 Nature in words'
           ]
         },
         {
           id: 'yy-xb4', name: '选择性必修第四册', grades: ['高二', '高三'], chapters: [
-            'Unit 1 Science Fiction', 'Unit 2 Iconic Attractions', 'Unit 3 Sea Exploration',
-            'Unit 4 Sharing', 'Unit 5 Launching Your Career'
+            'Unit 1 Looking forwards', 'Unit 2 Lessons in life', 'Unit 3 The world meets China',
+            'Unit 4 Everyday economics', 'Unit 5 Into the unknown', 'Unit 6 The media'
           ]
         },
         {

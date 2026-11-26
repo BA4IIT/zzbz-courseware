@@ -1,4 +1,4 @@
-﻿/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
+/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
  * 访问 index.html?mock=1 时启用。 */
 (function () {
   'use strict';
@@ -105,8 +105,8 @@
     async checkUpdate() {
       return {
         ok: true,
-        currentVersion: '1.6.0',
-        latestVersion: '1.6.0',
+        currentVersion: '1.7.0',
+        latestVersion: '1.7.0',
         isLatest: true,
         updateAvailable: false,
         releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
@@ -128,7 +128,9 @@
       async status() { return { ok: true, hasKey: false }; },
       async saveKey() { return { ok: false, error: '浏览器预览模式不能保存 API Key。' }; },
       async clearKey() { return { ok: true }; },
-      async ask() { return { ok: false, error: '浏览器预览模式不能调用 DeepSeek，请使用桌面程序。' }; }
+      async ask() { return { ok: false, error: '浏览器预览模式不能调用 DeepSeek，请使用桌面程序。' }; },
+      async readFile() { return { ok: false, error: '浏览器预览模式不能读取本机文件。' }; },
+      async ocrImage() { return { ok: false, error: '浏览器预览模式不能识别本机图片。' }; }
     },
     async startPhoneCast() { return { ok: false, error: '浏览器预览模式不能启动手机投屏服务。' }; },
     async stopPhoneCast() { return { ok: true }; },
@@ -136,6 +138,7 @@
     async openBluetoothSettings() { return { ok: false, error: '浏览器预览模式不能打开系统设置。' }; },
     onPhoneFrame() { return () => {}; },
     onUpdateProgress() { return () => {}; },
+    async searchPolitics() { return { ok: false, error: '浏览器预览模式不能抓取网络新闻，请使用桌面程序。' }; },
     browserCredentials: {
       async get() { return { ok: true, username: '', password: '', savedAt: '' }; },
       async save() { return { ok: false, error: '浏览器预览模式不能保存账号。' }; },
@@ -161,7 +164,7 @@
       return {
         ok: true,
         name: '枣庄八中集成桌面教学系统',
-        version: '1.6.0',
+        version: '1.7.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',

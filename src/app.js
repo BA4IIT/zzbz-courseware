@@ -28,6 +28,148 @@
     return;
   }
 
+  /* ---------------- 数学表达式 ---------------- */
+
+  const MATH_FUNCTIONS = {
+    sin: (x, deg) => Math.sin(deg ? x * Math.PI / 180 : x),
+    cos: (x, deg) => Math.cos(deg ? x * Math.PI / 180 : x),
+    tan: (x, deg) => Math.tan(deg ? x * Math.PI / 180 : x),
+    asin: (x, deg) => deg ? Math.asin(x) * 180 / Math.PI : Math.asin(x),
+    acos: (x, deg) => deg ? Math.acos(x) * 180 / Math.PI : Math.acos(x),
+    atan: (x, deg) => deg ? Math.atan(x) * 180 / Math.PI : Math.atan(x),
+    sqrt: (x) => Math.sqrt(x),
+    abs: (x) => Math.abs(x),
+    ln: (x) => Math.log(x),
+    log: (x) => Math.log10(x),
+    exp: (x) => Math.exp(x),
+    floor: (x) => Math.floor(x),
+    ceil: (x) => Math.ceil(x),
+    round: (x) => Math.round(x)
+  };
+
+  function evaluateMath(expression, options) {
+    const config = options || {};
+    const angleMode = config.angleMode === 'deg';
+    let source = String(expression || '')
+      .replace(/[πΠ]/g, 'pi')
+      .replace(/×/g, '*')
+      .replace(/÷/g, '/')
+      .replace(/−/g, '-')
+      .replace(/²/g, '^2')
+      .replace(/³/g, '^3')
+      .replace(/^\s*(?:y|f\s*\(\s*x\s*\))\s*=/i, '')
+      .trim();
+    if (!source) throw new Error('请输入表达式');
+    const tokens = [];
+    let index = 0;
+    while (index < source.length) {
+      const ch = source[index];
+      if (/\s/.test(ch)) { index += 1; continue; }
+      if (/[0-9.]/.test(ch)) {
+        let start = index;
+        let dots = 0;
+        while (index < source.length && /[0-9.]/.test(source[index])) {
+          if (source[index] === '.') dots += 1;
+          index += 1;
+        }
+        if (dots > 1) throw new Error('数字格式错误');
+        const raw = source.slice(start, index);
+        if (raw === '.') throw new Error('数字格式错误');
+        tokens.push({ type: 'number', value: Number(raw) });
+        continue;
+      }
+      if (/[a-zA-Z_]/.test(ch)) {
+        let start = index;
+        while (index < source.length && /[a-zA-Z_]/.test(source[index])) index += 1;
+        tokens.push({ type: 'ident', value: source.slice(start, index).toLowerCase() });
+        continue;
+      }
+      if ('+-*/^%'.includes(ch)) {
+        tokens.push({ type: 'op', value: ch });
+        index += 1;
+        continue;
+      }
+      if (ch === '(') { tokens.push({ type: 'lparen' }); index += 1; continue; }
+      if (ch === ')') { tokens.push({ type: 'rparen' }); index += 1; continue; }
+      throw new Error(`不支持的字符：${ch}`);
+    }
+    let cursor = 0;
+    const peek = () => tokens[cursor];
+    const consume = () => tokens[cursor++];
+    const startsValue = (token) => token && (token.type === 'number' || token.type === 'ident' || token.type === 'lparen');
+    function parseExpression() {
+      let value = parseTerm();
+      while (peek() && peek().type === 'op' && (peek().value === '+' || peek().value === '-')) {
+        const op = consume().value;
+        const right = parseTerm();
+        value = op === '+' ? value + right : value - right;
+      }
+      return value;
+    }
+    function parseTerm() {
+      let value = parseUnary();
+      while (true) {
+        if (peek() && peek().type === 'op' && ['*', '/', '%'].includes(peek().value)) {
+          const op = consume().value;
+          const right = parseUnary();
+          if (op === '*') value *= right;
+          else if (op === '/') value /= right;
+          else value %= right;
+        } else if (startsValue(peek())) {
+          value *= parseUnary();
+        } else break;
+      }
+      return value;
+    }
+    function parseUnary() {
+      if (peek() && peek().type === 'op' && (peek().value === '+' || peek().value === '-')) {
+        const op = consume().value;
+        return op === '-' ? -parseUnary() : parseUnary();
+      }
+      return parsePower();
+    }
+    function parsePower() {
+      const base = parsePrimary();
+      if (peek() && peek().type === 'op' && peek().value === '^') {
+        consume();
+        return Math.pow(base, parseUnary());
+      }
+      return base;
+    }
+    function parsePrimary() {
+      const token = consume();
+      if (!token) throw new Error('表达式不完整');
+      if (token.type === 'number') return token.value;
+      if (token.type === 'lparen') {
+        const value = parseExpression();
+        if (!peek() || peek().type !== 'rparen') throw new Error('缺少右括号');
+        consume();
+        return value;
+      }
+      if (token.type === 'ident') {
+        if (token.value === 'pi') return Math.PI;
+        if (token.value === 'e') return Math.E;
+        if (token.value === 'x') {
+          if (!Object.prototype.hasOwnProperty.call(config, 'x')) throw new Error('当前表达式不能使用变量 x');
+          return Number(config.x);
+        }
+        const fn = MATH_FUNCTIONS[token.value];
+        if (!fn) throw new Error(`未知函数或变量：${token.value}`);
+        if (!peek() || peek().type !== 'lparen') throw new Error(`函数 ${token.value} 需要括号`);
+        consume();
+        const arg = parseExpression();
+        if (!peek() || peek().type !== 'rparen') throw new Error('缺少右括号');
+        consume();
+        return fn(arg, angleMode);
+      }
+      throw new Error('表达式格式错误');
+    }
+    const result = parseExpression();
+    if (cursor < tokens.length) throw new Error('表达式有多余内容');
+    if (!Number.isFinite(result)) throw new Error('结果不是有限数值');
+    return result;
+  }
+
   /* ---------------- 基础工具 ---------------- */
 
   const GRADE_NAMES = ['高一', '高二', '高三'];
@@ -39,6 +181,10 @@
     questions: '学科提问',
     ai: 'AI 解答',
     wordgame: '单词天天练',
+    graph: '函数图像',
+    calculator: '科学计算器',
+    politics: '时事政治',
+    settings: '通用设置',
     vote: '科目投票',
     students: '随机点名',
     phone: '手机投屏',
@@ -50,7 +196,7 @@
     usb: 'U 盘检测',
     data: '数据管理'
   };
-  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'browser', 'camera', 'whiteboard', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer']);
+  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics', 'browser', 'camera', 'whiteboard', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer', 'settings']);
   const ADMIN_PASSWORD = '6767';
   const VOTE_EXTRA_SUBJECTS = [
     { id: 'music', name: '音乐', short: '音', color: '#c56f9e' },
@@ -288,11 +434,12 @@
     cameraDeviceId: '',
     cameraStarting: false,
     cameraAutoStarted: false,
-    cameraResolution: 1920,
-    cameraClarity: 110,
+    cameraResolution: 3840,
+    cameraClarity: 100,
     cameraRotation: 0,
     cameraMirrorX: false,
     browserInitialized: false,
+    browserZoom: 1,
     browserCredentials: null,
     subjectVotes: {},
     students: [],
@@ -303,10 +450,26 @@
     aiKeySaved: false,
     aiAsking: false,
     aiAnswer: '',
+    aiFile: null,
+    aiOcr: null,
+    aiOcrCleanText: '',
+    aiTab: 'ask',
     wordGame: null,
     wordGameScores: [],
     phoneCastActive: false,
     phoneFrameCleanup: null,
+    graph: {
+      functions: [],
+      scale: 40,
+      originX: 0,
+      originY: 0,
+      initialized: false,
+      dragging: false,
+      lastX: 0,
+      lastY: 0
+    },
+    calc: { expression: '', result: '', angleMode: 'rad', history: [] },
+    politics: { bookId: '', chapter: '', days: 7, loading: false, items: [], warning: '', aiUsed: false },
     timer: { total: 300, remaining: 300, running: false, endAt: 0, interval: 0, lastBeep: 0 },
     updateChecking: false,
     updateDownloading: false,
@@ -1088,7 +1251,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.6.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '1.7.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1485,6 +1648,33 @@
     }).filter(Boolean);
   }
 
+  function normalizeAiSettings(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    return {
+      model: ['deepseek-chat', 'deepseek-reasoner'].includes(source.model) ? source.model : 'deepseek-chat',
+      reasoning: ['fast', 'standard', 'deep'].includes(source.reasoning) ? source.reasoning : 'standard'
+    };
+  }
+
+  function normalizeDanmakuSettings(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    return {
+      enabled: source.enabled !== false,
+      speed: Math.max(20, Math.min(100, Math.floor(Number(source.speed) || 45))),
+      fontSize: Math.max(12, Math.min(30, Math.floor(Number(source.fontSize) || 18)))
+    };
+  }
+
+  function aiSettings() {
+    state.settings.ai = normalizeAiSettings(state.settings.ai);
+    return state.settings.ai;
+  }
+
+  function danmakuSettings() {
+    state.settings.danmaku = normalizeDanmakuSettings(state.settings.danmaku);
+    return state.settings.danmaku;
+  }
+
   function collectTimetableFromDom() {
     const table = $('#timetableTable');
     if (!table) return state.timetable || defaultClientTimetable();
@@ -1821,8 +2011,10 @@
   function applyCameraEnhancements() {
     const video = $('#cameraVideo');
     if (!video) return;
-    const factor = Math.max(0.5, Math.min(1.6, (Number(state.cameraClarity) || 110) / 100));
-    video.style.filter = `contrast(${(0.78 + factor * 0.32).toFixed(3)}) saturate(${(0.84 + factor * 0.24).toFixed(3)}) brightness(${(0.92 + factor * 0.1).toFixed(3)})`;
+    const factor = Math.max(0.5, Math.min(1.6, (Number(state.cameraClarity) || 100) / 100));
+    video.style.filter = Math.abs(factor - 1) < 0.01
+      ? 'none'
+      : `contrast(${(0.78 + factor * 0.32).toFixed(3)}) saturate(${(0.84 + factor * 0.24).toFixed(3)}) brightness(${(0.92 + factor * 0.1).toFixed(3)})`;
     const stage = $('#cameraStage');
     const rect = stage ? stage.getBoundingClientRect() : { width: 16, height: 9 };
     const rotate = ((Number(state.cameraRotation) || 0) % 360 + 360) % 360;
@@ -1830,10 +2022,12 @@
       ? Math.min(rect.width / Math.max(1, rect.height), rect.height / Math.max(1, rect.width))
       : 1;
     const mirror = state.cameraMirrorX ? -1 : 1;
-    video.style.transform = `rotate(${rotate}deg) scale(${fitScale.toFixed(4)}) scaleX(${mirror})`;
+    video.style.transform = rotate === 0 && !state.cameraMirrorX && fitScale === 1
+      ? 'none'
+      : `rotate(${rotate}deg) scale(${fitScale.toFixed(4)}) scaleX(${mirror})`;
     $$('[data-camera-mirror="x"]').forEach((button) => button.classList.toggle('is-active', Boolean(state.cameraMirrorX)));
     const clarityValue = $('#cameraClarityValue');
-    if (clarityValue) clarityValue.textContent = `${state.cameraClarity}%`;
+    if (clarityValue) clarityValue.textContent = `${state.cameraClarity || 100}%`;
   }
 
   function updateCameraResolutionInfo() {
@@ -1863,17 +2057,37 @@
         state.cameraStream.getTracks().forEach((track) => track.stop());
         state.cameraStream = null;
       }
-      const width = Math.max(640, Number(state.cameraResolution) || 1920);
-      const constraints = {
+      const targetWidth = Math.max(640, Number(state.cameraResolution) || 1920);
+      const minWidth = targetWidth >= 3840 ? 1920 : targetWidth >= 2560 ? 1920 : targetWidth >= 1920 ? 1280 : 640;
+      const targetHeight = Math.round(targetWidth * 9 / 16);
+      const minHeight = Math.round(minWidth * 9 / 16);
+      const selectedCamera = deviceId ? { deviceId: { exact: deviceId } } : {};
+      const highQuality = {
         audio: false,
         video: {
-          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-          width: { ideal: width },
-          height: { ideal: Math.round(width * 9 / 16) },
-          frameRate: { ideal: 30, max: 30 }
+          ...selectedCamera,
+          width: { min: minWidth, ideal: targetWidth },
+          height: { min: minHeight, ideal: targetHeight },
+          frameRate: { ideal: 30, max: 30 },
+          // 展台/文档摄像头通常需要连续自动对焦；不支持该约束的设备会自动忽略。
+          advanced: [{ focusMode: 'continuous' }, { whiteBalanceMode: 'continuous' }]
         }
       };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(highQuality);
+      } catch (highError) {
+        // 某些采集卡不支持 min 约束或连续对焦，退回只锁定设备的高清请求。
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            ...selectedCamera,
+            width: { ideal: targetWidth },
+            height: { ideal: targetHeight },
+            frameRate: { ideal: 30 }
+          }
+        });
+      }
       state.cameraStream = stream;
       const video = $('#cameraVideo');
       if (video) {
@@ -1886,6 +2100,20 @@
       if (liveBadge) liveBadge.hidden = false;
       const track = stream.getVideoTracks()[0];
       state.cameraDeviceId = track?.getSettings?.().deviceId || deviceId || '';
+      if (track && track.applyConstraints) {
+        try {
+          const caps = track.getCapabilities?.() || {};
+          const maxWidth = Math.max(targetWidth, Number(caps.width?.max) || targetWidth);
+          const applyWidth = Math.min(maxWidth, targetWidth);
+          await track.applyConstraints({
+            width: { ideal: applyWidth },
+            height: { ideal: Math.round(applyWidth * 9 / 16) },
+            advanced: [{ focusMode: 'continuous' }, { whiteBalanceMode: 'continuous' }]
+          }).catch(() => {});
+        } catch (error) {
+          /* 采集卡不支持动态约束时保持默认高清流 */
+        }
+      }
       applyCameraEnhancements();
       updateCameraResolutionInfo();
       cameraStatus('展台已连接', true);
@@ -2133,6 +2361,7 @@
     webview.addEventListener('dom-ready', () => {
       hideLoading();
       syncAddress();
+      setBrowserZoom(state.browserZoom);
       fillBrowserCredentials(false);
       window.setTimeout(() => fillBrowserCredentials(false), 1400);
     });
@@ -2172,6 +2401,14 @@
     } catch (error) {
       showToast('浏览器操作失败', { type: 'error' });
     }
+  }
+
+  function setBrowserZoom(value) {
+    state.browserZoom = Math.max(0.5, Math.min(2, Number(value) || 1));
+    const webview = browserWebview();
+    try { webview?.setZoomFactor?.(state.browserZoom); } catch (error) { /* 页面尚未初始化 */ }
+    const label = $('#browserZoomLabel');
+    if (label) label.textContent = `${Math.round(state.browserZoom * 100)}%`;
   }
 
   function browserGoToAddress(value) {
@@ -2451,6 +2688,9 @@
     $$('[data-browser-forward]').forEach((button) => button.addEventListener('click', () => browserNavigate('forward')));
     $$('[data-browser-reload]').forEach((button) => button.addEventListener('click', () => browserNavigate('reload')));
     $$('[data-browser-home]').forEach((button) => button.addEventListener('click', () => browserNavigate('home')));
+    $$('[data-browser-zoom-in]').forEach((button) => button.addEventListener('click', () => setBrowserZoom(state.browserZoom + 0.1)));
+    $$('[data-browser-zoom-out]').forEach((button) => button.addEventListener('click', () => setBrowserZoom(state.browserZoom - 0.1)));
+    $$('[data-browser-zoom-reset]').forEach((button) => button.addEventListener('click', () => setBrowserZoom(1)));
     const browserAddress = $('#browserAddress');
     if (browserAddress) {
       browserAddress.addEventListener('keydown', (event) => {
@@ -2604,11 +2844,155 @@
     if (aiAskButton) aiAskButton.addEventListener('click', askAi);
     const aiCopyAnswer = $('#aiCopyAnswer');
     if (aiCopyAnswer) aiCopyAnswer.addEventListener('click', copyAiAnswer);
+    const aiAttachFile = $('#aiAttachFile');
+    if (aiAttachFile) aiAttachFile.addEventListener('click', attachAiFile);
+    const aiRemoveFile = $('#aiRemoveFile');
+    if (aiRemoveFile) aiRemoveFile.addEventListener('click', removeAiFile);
+    $$('[data-ai-tab]').forEach((button) => button.addEventListener('click', () => setAiTab(button.dataset.aiTab)));
+    const aiTranslateButton = $('#aiTranslateButton');
+    if (aiTranslateButton) aiTranslateButton.addEventListener('click', translateAi);
+    const aiOcrPick = $('#aiOcrPick');
+    if (aiOcrPick) aiOcrPick.addEventListener('click', pickOcrImage);
+    const aiOcrRun = $('#aiOcrRun');
+    if (aiOcrRun) aiOcrRun.addEventListener('click', pickOcrImage);
+    const aiOcrCleanup = $('#aiOcrCleanup');
+    if (aiOcrCleanup) aiOcrCleanup.addEventListener('click', cleanupOcrText);
+    const aiOcrCopy = $('#aiOcrCopy');
+    if (aiOcrCopy) aiOcrCopy.addEventListener('click', copyOcrText);
+    ['#aiModel', '#aiReasoning'].forEach((selector) => {
+      const select = $(selector);
+      if (select) select.addEventListener('change', async () => {
+        state.settings.ai = normalizeAiSettings({ model: $('#aiModel')?.value, reasoning: $('#aiReasoning')?.value });
+        await persistLibrary();
+      });
+    });
+    const politicsBookSelect = $('#politicsBookSelect');
+    if (politicsBookSelect) politicsBookSelect.addEventListener('change', () => {
+      state.politics.bookId = politicsBookSelect.value;
+      state.politics.chapter = '';
+      renderPoliticsFilters();
+    });
+    const politicsChapterSelect = $('#politicsChapterSelect');
+    if (politicsChapterSelect) politicsChapterSelect.addEventListener('change', () => {
+      state.politics.chapter = politicsChapterSelect.value;
+    });
+    const politicsDays = $('#politicsDays');
+    if (politicsDays) politicsDays.addEventListener('change', () => {
+      state.politics.days = Number(politicsDays.value) || 7;
+    });
+    const politicsSearchButton = $('#politicsSearchButton');
+    if (politicsSearchButton) politicsSearchButton.addEventListener('click', searchPolitics);
+
+    const settingsSaveKey = $('#settingsSaveKey');
+    if (settingsSaveKey) settingsSaveKey.addEventListener('click', saveSettingsKey);
+    const settingsClearKey = $('#settingsClearKey');
+    if (settingsClearKey) settingsClearKey.addEventListener('click', clearSettingsKey);
+    const settingsSave = $('#settingsSave');
+    if (settingsSave) settingsSave.addEventListener('click', saveSettings);
+    ['#settingsDanmakuSpeed', '#settingsDanmakuFont'].forEach((selector) => {
+      const input = $(selector);
+      if (input) input.addEventListener('input', () => {
+        const speedValue = $('#settingsDanmakuSpeedValue');
+        const fontValue = $('#settingsDanmakuFontValue');
+        if (speedValue) speedValue.textContent = $('#settingsDanmakuSpeed')?.value || '45';
+        if (fontValue) fontValue.textContent = $('#settingsDanmakuFont')?.value || '18';
+      });
+    });
     const aiQuestion = $('#aiQuestion');
     if (aiQuestion) aiQuestion.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
         askAi();
+      }
+    });
+    const graphAdd = $('#graphAdd');
+    if (graphAdd) graphAdd.addEventListener('click', addGraphFunction);
+    const graphExpression = $('#graphExpression');
+    if (graphExpression) graphExpression.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); addGraphFunction(); }
+    });
+    const graphCanvas = $('#graphCanvas');
+    if (graphCanvas && !graphCanvas.dataset.bound) {
+      graphCanvas.dataset.bound = '1';
+      const zoomAt = (factor, clientX, clientY) => {
+        const rect = graphCanvas.getBoundingClientRect();
+        const mx = (clientX || rect.left + rect.width / 2) - rect.left;
+        const my = (clientY || rect.top + rect.height / 2) - rect.top;
+        const old = state.graph.scale;
+        const next = Math.max(5, Math.min(400, old * factor));
+        state.graph.originX = mx - (mx - state.graph.originX) * (next / old);
+        state.graph.originY = my - (my - state.graph.originY) * (next / old);
+        state.graph.scale = next;
+        drawGraph();
+      };
+      graphCanvas.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        zoomAt(event.deltaY < 0 ? 1.18 : 0.85, event.clientX, event.clientY);
+      }, { passive: false });
+      graphCanvas.addEventListener('pointerdown', (event) => {
+        state.graph.dragging = true;
+        state.graph.lastX = event.clientX;
+        state.graph.lastY = event.clientY;
+        graphCanvas.setPointerCapture?.(event.pointerId);
+      });
+      graphCanvas.addEventListener('pointermove', (event) => {
+        if (!state.graph.dragging) return;
+        state.graph.originX += event.clientX - state.graph.lastX;
+        state.graph.originY += event.clientY - state.graph.lastY;
+        state.graph.lastX = event.clientX;
+        state.graph.lastY = event.clientY;
+        drawGraph();
+      });
+      const endGraphDrag = (event) => {
+        state.graph.dragging = false;
+        try { graphCanvas.releasePointerCapture?.(event.pointerId); } catch (error) { /* ignore */ }
+      };
+      graphCanvas.addEventListener('pointerup', endGraphDrag);
+      graphCanvas.addEventListener('pointercancel', endGraphDrag);
+      window.addEventListener('resize', () => { if (state.page === 'graph') drawGraph(); });
+      $('#graphZoomIn')?.addEventListener('click', () => zoomAt(1.25));
+      $('#graphZoomOut')?.addEventListener('click', () => zoomAt(0.8));
+      $('#graphReset')?.addEventListener('click', () => {
+        const rect = graphCanvas.getBoundingClientRect();
+        state.graph.scale = 40;
+        state.graph.originX = rect.width / 2;
+        state.graph.originY = rect.height / 2;
+        drawGraph();
+      });
+    }
+    $$('[data-calc-value]').forEach((button) => button.addEventListener('click', () => {
+      state.calc.expression += button.dataset.calcValue || '';
+      state.calc.result = '';
+      calcShow(state.calc.expression, '');
+    }));
+    $$('[data-calc-action]').forEach((button) => button.addEventListener('click', () => {
+      const action = button.dataset.calcAction;
+      if (action === 'clear') {
+        state.calc.expression = '';
+        state.calc.result = '';
+        calcShow('', '');
+      } else if (action === 'backspace') {
+        state.calc.expression = state.calc.expression.slice(0, -1);
+        state.calc.result = '';
+        calcShow(state.calc.expression, '');
+      } else if (action === 'equals') {
+        calculateExpression();
+      }
+    }));
+    $$('[data-calc-angle]').forEach((button) => button.addEventListener('click', () => {
+      state.calc.angleMode = button.dataset.calcAngle === 'deg' ? 'deg' : 'rad';
+      renderCalculator();
+    }));
+    const calcClearHistory = $('#calcClearHistory');
+    if (calcClearHistory) calcClearHistory.addEventListener('click', () => {
+      state.calc.history = [];
+      renderCalcHistory();
+    });
+    document.addEventListener('change', (event) => {
+      const visible = event.target.closest('[data-graph-visible]');
+      if (visible) {
+        const fn = state.graph.functions.find((entry) => entry.id === visible.dataset.graphVisible);
+        if (fn) { fn.visible = Boolean(visible.checked); drawGraph(); }
       }
     });
 
@@ -2692,7 +3076,378 @@
     });
   }
 
-  /* ---------------- AI 解答 ---------------- */
+  /* ---------------- 函数图像 ---------------- */
+
+  const GRAPH_COLORS = ['#2f7fd8', '#e35d5d', '#2d9d78', '#d99a3e', '#7b61c9', '#2f9fd0', '#c56f9e', '#5b7d3a'];
+
+  function graphCoordinates() {
+    const canvas = $('#graphCanvas');
+    if (!canvas) return null;
+    const width = canvas.clientWidth || 760;
+    const height = canvas.clientHeight || 420;
+    if (!state.graph.originX && !state.graph.originY) {
+      state.graph.originX = width / 2;
+      state.graph.originY = height / 2;
+    }
+    return { canvas, width, height, context: canvas.getContext('2d') };
+  }
+
+  function graphStep(scale) {
+    const raw = 72 / Math.max(1, scale);
+    const power = Math.pow(10, Math.floor(Math.log10(raw)));
+    const normalized = raw / power;
+    const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+    return step * power;
+  }
+
+  function drawGraph() {
+    const coords = graphCoordinates();
+    if (!coords) return;
+    const { canvas, width, height, context } = coords;
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+    }
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    const graph = state.graph;
+    const step = graphStep(graph.scale);
+    const left = -graph.originX / graph.scale;
+    const right = (width - graph.originX) / graph.scale;
+    const bottom = (graph.originY - height) / graph.scale;
+    const top = graph.originY / graph.scale;
+    const decimals = step >= 1 ? 0 : Math.max(0, Math.min(4, -Math.floor(Math.log10(step))));
+    context.lineWidth = 1;
+    context.font = '9px "Segoe UI", Arial, sans-serif';
+    context.fillStyle = '#8ea5b7';
+    context.strokeStyle = '#eaf2f8';
+    for (let x = Math.ceil(left / step) * step; x <= right; x += step) {
+      const sx = graph.originX + x * graph.scale;
+      context.beginPath();
+      context.moveTo(sx, 0);
+      context.lineTo(sx, height);
+      context.stroke();
+      if (Math.abs(x) > step / 2) {
+        context.textAlign = 'center';
+        context.fillText(Number(x.toFixed(decimals)).toString(), sx, Math.min(height - 5, graph.originY + 13));
+      }
+    }
+    for (let y = Math.ceil(bottom / step) * step; y <= top; y += step) {
+      const sy = graph.originY - y * graph.scale;
+      context.beginPath();
+      context.moveTo(0, sy);
+      context.lineTo(width, sy);
+      context.stroke();
+      if (Math.abs(y) > step / 2) {
+        context.textAlign = 'right';
+        context.fillText(Number(y.toFixed(decimals)).toString(), Math.max(26, graph.originX - 7), sy + 3);
+      }
+    }
+    context.strokeStyle = '#7894a8';
+    context.lineWidth = 1.3;
+    context.beginPath();
+    context.moveTo(0, graph.originY);
+    context.lineTo(width, graph.originY);
+    context.moveTo(graph.originX, 0);
+    context.lineTo(graph.originX, height);
+    context.stroke();
+    context.fillStyle = '#68859a';
+    context.textAlign = 'right';
+    context.fillText('x', width - 5, graph.originY - 7);
+    context.textAlign = 'left';
+    context.fillText('y', graph.originX + 7, 12);
+    context.font = '10px Georgia, "Times New Roman", serif';
+    context.fillStyle = '#7894a8';
+    context.fillText('0', graph.originX - 7, graph.originY + 13);
+    state.graph.functions.forEach((fn) => {
+      if (!fn.visible) return;
+      context.strokeStyle = fn.color;
+      context.lineWidth = 1.8;
+      context.beginPath();
+      let started = false;
+      let previousY = null;
+      for (let px = 0; px <= width; px += 1) {
+        const worldX = (px - graph.originX) / graph.scale;
+        let y;
+        try { y = evaluateMath(fn.expression, { x: worldX }); } catch (error) { y = NaN; }
+        if (!Number.isFinite(y)) {
+          started = false;
+          previousY = null;
+          continue;
+        }
+        const sy = graph.originY - y * graph.scale;
+        if (!Number.isFinite(sy) || Math.abs(sy) > height * 5) {
+          started = false;
+          previousY = null;
+          continue;
+        }
+        if (!started || (previousY !== null && Math.abs(sy - previousY) > height * 1.5)) {
+          context.moveTo(px, sy);
+          started = true;
+        } else {
+          context.lineTo(px, sy);
+        }
+        previousY = sy;
+      }
+      context.stroke();
+    });
+    const empty = $('#graphEmpty');
+    if (empty) empty.hidden = state.graph.functions.length > 0;
+    const scaleLabel = $('#graphScaleLabel');
+    if (scaleLabel) scaleLabel.textContent = `${Math.round(state.graph.scale)} px / 单位`;
+  }
+
+  function renderGraphList() {
+    const list = $('#graphFunctionList');
+    const count = $('#graphFunctionCount');
+    if (count) count.textContent = `${state.graph.functions.length} 条`;
+    if (!list) return;
+    list.innerHTML = state.graph.functions.length
+      ? state.graph.functions.map((fn) => `<div class="graph-function-row">
+        <button type="button" class="graph-color-dot" style="--graph-color:${fn.color}" data-graph-color="${attr(fn.id)}" title="切换颜色"></button>
+        <code title="${attr(fn.expression)}">y = ${esc(fn.expression)}</code>
+        <label class="graph-visible"><input type="checkbox" data-graph-visible="${attr(fn.id)}"${fn.visible ? ' checked' : ''}>显示</label>
+        <button type="button" class="graph-remove" data-graph-remove="${attr(fn.id)}" title="移除">${icon('close')}</button>
+      </div>`).join('')
+      : '<div class="graph-list-empty">还没有函数<br><small>输入表达式后点击「绘制」</small></div>';
+  }
+
+  function addGraphFunction() {
+    const input = $('#graphExpression');
+    const errorNode = $('#graphError');
+    const expression = input ? input.value.trim() : '';
+    if (!expression) {
+      showToast('请输入函数表达式。', { type: 'warn' });
+      return;
+    }
+    const normalized = expression.replace(/^\s*(?:y|f\s*\(\s*x\s*\))\s*=/i, '').trim();
+    try {
+      const samples = [0, 1, -1, 2, 3, Math.PI];
+      if (!samples.some((x) => {
+        try { return Number.isFinite(evaluateMath(normalized, { x })); } catch (err) { return false; }
+      })) throw new Error('表达式没有可用数值，请检查定义域');
+      state.graph.functions.push({
+        id: uniqueId('graph'),
+        expression: normalized,
+        color: GRAPH_COLORS[state.graph.functions.length % GRAPH_COLORS.length],
+        visible: true
+      });
+      if (input) input.value = '';
+      if (errorNode) errorNode.hidden = true;
+      renderGraphList();
+      drawGraph();
+    } catch (error) {
+      if (errorNode) {
+        errorNode.hidden = false;
+        errorNode.textContent = `表达式错误：${error.message}`;
+      }
+    }
+  }
+
+  function renderGraph() {
+    const canvas = $('#graphCanvas');
+    if (!canvas) return;
+    if (!state.graph.initialized) {
+      state.graph.initialized = true;
+      requestAnimationFrame(() => {
+        const coords = graphCoordinates();
+        if (coords && !state.graph.originX) {
+          state.graph.originX = coords.width / 2;
+          state.graph.originY = coords.height / 2;
+        }
+        drawGraph();
+      });
+    } else {
+      requestAnimationFrame(drawGraph);
+    }
+    renderGraphList();
+  }
+
+  /* ---------------- 科学计算器 ---------------- */
+
+  function calcShow(expression, result) {
+    const exprNode = $('#calcExpression');
+    const resultNode = $('#calcResult');
+    if (exprNode) exprNode.textContent = expression || '0';
+    if (resultNode) resultNode.textContent = result || '0';
+  }
+
+  function renderCalcHistory() {
+    const list = $('#calcHistory');
+    if (!list) return;
+    list.innerHTML = state.calc.history.length
+      ? state.calc.history.map((item) => `<button type="button" class="calc-history-row" data-calc-history="${attr(item.expression)}"><span>${esc(item.expression)}</span><strong>${esc(item.result)}</strong></button>`).join('')
+      : '<div class="calc-history-empty">还没有计算记录</div>';
+  }
+
+  function calculateExpression() {
+    const expression = state.calc.expression.trim();
+    if (!expression) return;
+    try {
+      let value = evaluateMath(expression, { angleMode: state.calc.angleMode });
+      if (Math.abs(value) < 1e-12) value = 0;
+      const rounded = Number(value.toPrecision(12)).toString();
+      state.calc.result = rounded;
+      calcShow(expression, rounded);
+      state.calc.history.unshift({ expression, result: rounded });
+      state.calc.history = state.calc.history.slice(0, 20);
+      renderCalcHistory();
+    } catch (error) {
+      state.calc.result = '错误';
+      calcShow(expression, `错误：${error.message}`);
+    }
+  }
+
+  function renderCalculator() {
+    const mode = $('#calcHint');
+    if (mode) mode.textContent = state.calc.angleMode === 'deg' ? '角度制 DEG' : '弧度制 RAD';
+    const angleButtons = $$('[data-calc-angle]');
+    angleButtons.forEach((button) => button.classList.toggle('is-active', button.dataset.calcAngle === state.calc.angleMode));
+    calcShow(state.calc.expression, state.calc.result);
+    renderCalcHistory();
+  }
+
+  /* ---------------- 时事政治 ---------------- */
+
+  function politicsSubject() {
+    return DATA.catalog.find((subject) => subject.id === 'politics');
+  }
+
+  function politicsChapterName(chapter) {
+    return typeof chapter === 'string' ? chapter : String(chapter && chapter.name || '');
+  }
+
+  function politicsAllChapters() {
+    const subject = politicsSubject();
+    return subject ? subject.books.flatMap((book) => book.chapters.map((chapter) => ({ book, chapter: politicsChapterName(chapter) }))) : [];
+  }
+
+  function politicsChapterOptions(bookId) {
+    const subject = politicsSubject();
+    const book = subject && subject.books.find((entry) => entry.id === bookId);
+    const chapters = book ? book.chapters.map(politicsChapterName).filter(Boolean) : [];
+    return [`<option value="">全部章节</option>`, ...chapters.map((chapter) => `<option value="${attr(chapter)}"${state.politics.chapter === chapter ? ' selected' : ''}>${esc(chapter)}</option>`)].join('');
+  }
+
+  function renderPoliticsFilters() {
+    const subject = politicsSubject();
+    const bookSelect = $('#politicsBookSelect');
+    const chapterSelect = $('#politicsChapterSelect');
+    if (!subject || !bookSelect || !chapterSelect) return;
+    bookSelect.innerHTML = `<option value="">全部高中政治课本</option>${subject.books.map((book) => `<option value="${attr(book.id)}"${state.politics.bookId === book.id ? ' selected' : ''}>${esc(book.name)}${book.subtitle ? ` · ${esc(book.subtitle)}` : ''}</option>`).join('')}`;
+    chapterSelect.innerHTML = state.politics.bookId
+      ? politicsChapterOptions(state.politics.bookId)
+      : '<option value="">全部章节</option>';
+    chapterSelect.disabled = !state.politics.bookId;
+    const days = $('#politicsDays');
+    if (days) days.value = String(state.politics.days);
+  }
+
+  function formatNewsDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function renderPoliticsResults() {
+    const container = $('#politicsResults');
+    const count = $('#politicsResultCount');
+    const warning = $('#politicsWarning');
+    if (count) count.textContent = `${state.politics.items.length} 条`;
+    if (warning) warning.textContent = state.politics.warning || '';
+    if (!container) return;
+    if (!state.politics.items.length) {
+      container.innerHTML = `<div class="politics-empty"><span>${icon('news')}</span><strong>${state.politics.loading ? '正在抓取权威新闻…' : '等待查询'}</strong><p>${state.politics.loading ? 'DeepSeek 正在按章节筛选，请稍候。' : '点击「AI 搜索并匹配章节」获取最近时事新闻。'}</p></div>`;
+      return;
+    }
+    container.innerHTML = state.politics.items.map((item) => `<article class="politics-news-card">
+      <div class="politics-news-meta"><span class="politics-source">${esc(item.source || '权威媒体')}</span><span>${esc(formatNewsDate(item.publishedAt))}</span><span class="politics-chapter-tag">${esc(item.chapter || '综合')}</span></div>
+      <h3>${esc(item.title)}</h3>
+      <p>${esc(item.summary || item.description || '')}</p>
+      <button type="button" class="politics-link" data-politics-link="${attr(item.link)}">前往新闻 ${icon('external')}</button>
+    </article>`).join('');
+  }
+
+  function renderPoliticsDanmaku() {
+    const bar = $('#politicsDanmaku');
+    const track = $('#politicsDanmakuTrack');
+    if (!bar || !track) return;
+    const settings = danmakuSettings();
+    if (!settings.enabled || !state.politics.items.length) {
+      bar.hidden = true;
+      track.innerHTML = '';
+      return;
+    }
+    bar.hidden = false;
+    bar.style.setProperty('--danmaku-font-size', `${settings.fontSize}px`);
+    const duration = Math.max(22, 86 - settings.speed * 0.6);
+    track.style.animationDuration = `${duration}s`;
+    const titles = state.politics.items.slice(0, 12).map((item) => `<span>${esc(item.chapter || '综合')} · ${esc(item.title)}</span>`).join('');
+    track.innerHTML = `${titles}${titles}`;
+  }
+
+  function renderPolitics() {
+    renderPoliticsFilters();
+    const status = $('#politicsStatus');
+    if (status && !state.politics.loading) {
+      status.innerHTML = `<span></span>${state.politics.items.length ? `已获取 ${state.politics.items.length} 条新闻${state.politics.aiUsed ? ' · DeepSeek 已匹配章节' : ' · 关键词匹配'}` : '选择课本和章节后开始查询；新闻来自权威媒体 RSS。'}`;
+    }
+    renderPoliticsResults();
+    renderPoliticsDanmaku();
+  }
+
+  async function searchPolitics() {
+    if (state.politics.loading) return;
+    const bookId = $('#politicsBookSelect')?.value || '';
+    const chapter = $('#politicsChapterSelect')?.value || '';
+    const days = Number($('#politicsDays')?.value) || 7;
+    const subject = politicsSubject();
+    const book = subject?.books.find((entry) => entry.id === bookId);
+    let chapters = [];
+    if (book && chapter) chapters = [chapter];
+    else if (book) chapters = book.chapters.map(politicsChapterName).filter(Boolean);
+    else chapters = subject ? subject.books.flatMap((entry) => entry.chapters.map(politicsChapterName)).filter(Boolean) : [];
+    state.politics.bookId = bookId;
+    state.politics.chapter = chapter;
+    state.politics.days = days;
+    state.politics.loading = true;
+    state.politics.items = [];
+    state.politics.warning = '';
+    renderPolitics();
+    const button = $('#politicsSearchButton');
+    if (button) button.disabled = true;
+    const status = $('#politicsStatus');
+    if (status) status.innerHTML = '<span class="spinner"></span>正在抓取权威媒体新闻并调用 DeepSeek 匹配章节…';
+    try {
+      const ai = aiSettings();
+      const result = await api.searchPolitics({
+        days,
+        chapters,
+        model: ai.model,
+        reasoning: ai.reasoning
+      });
+      if (!result || !result.ok) {
+        state.politics.warning = (result && result.error) || '查询失败';
+        showToast(state.politics.warning, { type: 'error', duration: 6000 });
+        return;
+      }
+      state.politics.items = result.items || [];
+      state.politics.aiUsed = Boolean(result.aiUsed);
+      state.politics.warning = result.warning || '';
+      renderPolitics();
+      if (state.politics.items.length) showToast(`已获取 ${state.politics.items.length} 条时事新闻。`, { type: 'success' });
+    } finally {
+      state.politics.loading = false;
+      if (button) button.disabled = false;
+      renderPolitics();
+    }
+  }
+
+  /* ---------------- 通用设置 ---------------- */
+
 
   function setAiStatus(text, tone) {
     const node = $('#aiKeyStatus');
@@ -2713,12 +3468,207 @@
     } catch (error) {
       setAiStatus('读取 API Key 状态失败', 'error');
     }
+    const ai = aiSettings();
+    const model = $('#aiModel');
+    const reasoning = $('#aiReasoning');
+    if (model) model.value = ai.model;
+    if (reasoning) reasoning.value = ai.reasoning;
+    const fileName = $('#aiFileName');
+    const removeFile = $('#aiRemoveFile');
+    if (fileName) fileName.textContent = state.aiFile ? `${state.aiFile.name} · 已附加` : '未选择附件（支持 PDF / Word / Excel / TXT）';
+    if (removeFile) removeFile.hidden = !state.aiFile;
     const answer = $('#aiAnswer');
     if (answer && state.aiAnswer) {
       answer.textContent = state.aiAnswer;
       const copy = $('#aiCopyAnswer');
       if (copy) copy.hidden = false;
     }
+    setAiTab(state.aiTab);
+  }
+
+  function currentAiRequest(question) {
+    const ai = aiSettings();
+    return {
+      question,
+      model: $('#aiModel')?.value || ai.model,
+      reasoning: $('#aiReasoning')?.value || ai.reasoning
+    };
+  }
+
+  async function aiRequest(question) {
+    const request = currentAiRequest(question);
+    state.settings.ai = normalizeAiSettings({ model: request.model, reasoning: request.reasoning });
+    persistLibrary();
+    return api.ai.ask(request);
+  }
+
+  async function attachAiFile() {
+    if (!api.ai?.readFile) return;
+    const result = await api.ai.readFile();
+    if (!result || result.canceled) return;
+    if (!result.ok) {
+      showToast(result.error || '读取文件失败', { type: 'error' });
+      return;
+    }
+    state.aiFile = { name: result.name, text: result.text, truncated: result.truncated };
+    renderAi();
+    showToast(`已附加 ${result.name}。`, { type: 'success' });
+  }
+
+  function removeAiFile() {
+    state.aiFile = null;
+    renderAi();
+  }
+
+  function setAiTab(tab) {
+    state.aiTab = tab || 'ask';
+    $$('[data-ai-tab]').forEach((button) => button.classList.toggle('is-active', button.dataset.aiTab === state.aiTab));
+    $$('[data-ai-panel]').forEach((panel) => { panel.hidden = panel.dataset.aiPanel !== state.aiTab; });
+  }
+
+  async function translateAi() {
+    const input = $('#aiTranslateInput');
+    const text = input ? input.value.trim() : '';
+    if (!text) {
+      showToast('请输入要翻译的内容。', { type: 'warn' });
+      return;
+    }
+    const target = $('#aiTranslateTarget')?.value || '英文';
+    const button = $('#aiTranslateButton');
+    const result = $('#aiTranslateResult');
+    if (button) button.disabled = true;
+    if (result) result.innerHTML = '<div class="ai-thinking"><span></span><span></span><span></span>正在翻译…</div>';
+    try {
+      const response = await aiRequest(`请把下面的内容翻译成${target}。只输出译文，不要解释：\n\n${text}`);
+      if (!response || !response.ok) {
+        if (result) result.innerHTML = `<div class="ai-error">${icon('alert')}<strong>翻译失败</strong><p>${esc((response && response.error) || '未知错误')}</p></div>`;
+        return;
+      }
+      if (result) result.textContent = response.answer;
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function pickOcrImage() {
+    if (!api.ai?.ocrImage) return;
+    const result = await api.ai.ocrImage();
+    if (!result || result.canceled) return;
+    if (!result.ok) {
+      showToast(result.error || '图片识别失败', { type: 'error' });
+      return;
+    }
+    state.aiOcr = { name: result.name, text: result.text, imagePath: result.imagePath };
+    state.aiOcrCleanText = '';
+    const name = $('#aiOcrFileName');
+    if (name) name.textContent = `${result.name} · 已识别`;
+    const run = $('#aiOcrRun');
+    if (run) run.disabled = false;
+    const box = $('#aiOcrResult');
+    if (box) box.textContent = result.text;
+    const cleanup = $('#aiOcrCleanup');
+    if (cleanup) cleanup.hidden = false;
+    const copy = $('#aiOcrCopy');
+    if (copy) copy.hidden = false;
+    if (state.aiKeySaved) cleanupOcrText();
+  }
+
+  async function cleanupOcrText() {
+    if (!state.aiOcr) return;
+    if (!state.aiOcrCleanText) {
+      const button = $('#aiOcrCleanup');
+      if (button) button.disabled = true;
+      try {
+        const response = await aiRequest(`请整理下面这张图片识别出的文字。修正明显的 OCR 错字、补齐段落和标点，不要添加原文没有的内容。只输出整理后的文字：\n\n${state.aiOcr.text}`);
+        if (!response || !response.ok) {
+          showToast((response && response.error) || 'AI 整理失败', { type: 'error' });
+          return;
+        }
+        state.aiOcrCleanText = response.answer;
+        const box = $('#aiOcrResult');
+        if (box) box.textContent = response.answer;
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+  }
+
+  async function copyOcrText() {
+    const text = state.aiOcrCleanText || (state.aiOcr && state.aiOcr.text) || '';
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('识别文字已复制。', { type: 'success' });
+    } catch (error) {
+      showToast('复制失败，请手动选择文本。', { type: 'warn' });
+    }
+  }
+
+  async function saveSettingsKey() {
+    const input = $('#settingsAiKey');
+    if (!input || !api.ai) return;
+    const key = input.value.trim();
+    if (!key) {
+      showToast('请输入 DeepSeek API Key。', { type: 'warn' });
+      return;
+    }
+    const result = await api.ai.saveKey(key);
+    if (!result || !result.ok) {
+      showToast((result && result.error) || '保存失败', { type: 'error' });
+      return;
+    }
+    input.value = '';
+    state.aiKeySaved = true;
+    renderSettings();
+    showToast('API Key 已加密保存，所有 AI 功能会使用它。', { type: 'success' });
+  }
+
+  async function clearSettingsKey() {
+    if (!api.ai) return;
+    await api.ai.clearKey();
+    state.aiKeySaved = false;
+    renderSettings();
+    showToast('已清除 API Key。', { type: 'success' });
+  }
+
+  function renderSettings() {
+    const ai = aiSettings();
+    const danmaku = danmakuSettings();
+    const model = $('#settingsAiModel');
+    const reasoning = $('#settingsAiReasoning');
+    if (model) model.value = ai.model;
+    if (reasoning) reasoning.value = ai.reasoning;
+    const enabled = $('#settingsDanmakuEnabled');
+    if (enabled) enabled.checked = danmaku.enabled;
+    const speed = $('#settingsDanmakuSpeed');
+    const speedValue = $('#settingsDanmakuSpeedValue');
+    if (speed) speed.value = String(danmaku.speed);
+    if (speedValue) speedValue.textContent = String(danmaku.speed);
+    const font = $('#settingsDanmakuFont');
+    const fontValue = $('#settingsDanmakuFontValue');
+    if (font) font.value = String(danmaku.fontSize);
+    if (fontValue) fontValue.textContent = String(danmaku.fontSize);
+    const status = $('#settingsKeyStatus');
+    if (status) {
+      if (!api.ai) status.textContent = '当前版本不支持 AI';
+      else api.ai.status().then((result) => {
+        state.aiKeySaved = Boolean(result && result.hasKey);
+        status.textContent = state.aiKeySaved ? '已保存（加密）' : '未设置';
+      }).catch(() => { status.textContent = '读取失败'; });
+    }
+  }
+
+  async function saveSettings() {
+    const model = $('#settingsAiModel');
+    const reasoning = $('#settingsAiReasoning');
+    state.settings.ai = normalizeAiSettings({ model: model?.value, reasoning: reasoning?.value });
+    state.settings.danmaku = normalizeDanmakuSettings({
+      enabled: $('#settingsDanmakuEnabled')?.checked,
+      speed: Number($('#settingsDanmakuSpeed')?.value),
+      fontSize: Number($('#settingsDanmakuFont')?.value)
+    });
+    await persistLibrary();
+    showToast('通用设置已保存。', { type: 'success' });
   }
 
   async function saveAiKeyFromForm(showMessage = true) {
@@ -2768,7 +3718,10 @@
     const copy = $('#aiCopyAnswer');
     if (copy) copy.hidden = true;
     try {
-      const result = await api.ai.ask(question);
+      const attachment = state.aiFile
+        ? `\n\n【附件：${state.aiFile.name}】\n${state.aiFile.text}${state.aiFile.truncated ? '\n（附件内容过长，已截断）' : ''}`
+        : '';
+      const result = await aiRequest(`${question}${attachment}`);
       if (!result || !result.ok) {
         state.aiAnswer = '';
         if (answer) answer.innerHTML = `<div class="ai-error">${icon('alert')}<strong>回答失败</strong><p>${esc((result && result.error) || '未知错误')}</p></div>`;
@@ -3414,16 +4367,16 @@
     showToast(`已导入 ${imported.length} 名学生，当前名单共 ${state.students.length} 人。`, { type: 'success', title: '名单已更新', duration: 5000 });
   }
 
-  function weightedStudentPick() {
-    const pool = state.students;
-    if (!pool.length) return null;
-    const totalWeight = pool.reduce((sum, student) => sum + Math.max(1, Number(student.weight) || 1), 0);
+  function weightedStudentPick(pool) {
+    const source = pool || state.students;
+    if (!source.length) return null;
+    const totalWeight = source.reduce((sum, student) => sum + Math.max(1, Number(student.weight) || 1), 0);
     let ticket = Math.random() * totalWeight;
-    for (const student of pool) {
+    for (const student of source) {
       ticket -= Math.max(1, Number(student.weight) || 1);
       if (ticket <= 0) return student;
     }
-    return pool[pool.length - 1];
+    return source[source.length - 1];
   }
 
   function pickRandomStudent() {
@@ -3433,6 +4386,7 @@
       importStudentList();
       return;
     }
+    const count = Math.max(1, Math.min(state.students.length, Number($('#studentPickCount')?.value) || 1));
     state.studentSpinning = true;
     const nameNode = $('#studentPickName');
     const button = $('#pickStudentButton');
@@ -3446,23 +4400,33 @@
       if (ticks >= 18) {
         window.clearInterval(state.studentSpinTimer);
         state.studentSpinTimer = 0;
-        const picked = weightedStudentPick();
-        if (!picked) {
+        const pool = [...state.students];
+        const picked = [];
+        for (let index = 0; index < count && pool.length; index += 1) {
+          const student = weightedStudentPick(pool);
+          if (!student) break;
+          picked.push(student);
+          pool.splice(pool.indexOf(student), 1);
+        }
+        if (!picked.length) {
           state.studentSpinning = false;
           if (button) button.disabled = false;
           return;
         }
-        picked.pickedCount = (Number(picked.pickedCount) || 0) + 1;
-        picked.lastPickedAt = new Date().toISOString();
-        state.lastPickedStudent = picked.name;
+        picked.forEach((student) => {
+          student.pickedCount = (Number(student.pickedCount) || 0) + 1;
+          student.lastPickedAt = new Date().toISOString();
+        });
+        const names = picked.map((student) => student.name);
+        state.lastPickedStudent = names.join('、');
         state.studentSpinning = false;
         if (nameNode) {
-          nameNode.textContent = picked.name;
+          nameNode.textContent = state.lastPickedStudent;
           nameNode.classList.remove('is-spinning');
         }
         if (button) button.disabled = false;
         const hint = $('#studentPickHint');
-        if (hint) hint.textContent = `请 ${picked.name} 回答问题`;
+        if (hint) hint.textContent = `请 ${names.join('、')} 回答问题`;
         renderStudentRoster();
         persistLibrary();
       }
@@ -3483,24 +4447,27 @@
 
   function openStudentWeightsModal() {
     state.modal = 'student-weights';
-    ui.modalLayer.innerHTML = `<div class="modal" style="width:540px" role="dialog" aria-modal="true" aria-labelledby="studentWeightsTitle">
+    ui.modalLayer.innerHTML = `<div class="modal" style="width:620px" role="dialog" aria-modal="true" aria-labelledby="studentWeightsTitle">
       <header class="modal-header">
         <span class="modal-icon">${icon('users')}</span>
-        <div class="modal-heading"><h2 id="studentWeightsTitle">调整学生选中率</h2><p>权重 1—20，数字越大被抽中的概率越高；修改后保存。</p></div>
+        <div class="modal-heading"><h2 id="studentWeightsTitle">学生名单后台</h2><p>可修改姓名、调整权重，或勾选后批量/指定删除学生。</p></div>
         <button type="button" class="icon-button" data-close-modal aria-label="关闭">${icon('close')}</button>
       </header>
       <div class="modal-body">
+        <div class="student-admin-toolbar"><label><input type="checkbox" id="studentSelectAll">全选</label><span>勾选学生后可批量删除；不改名也可单独删除。</span></div>
         <div class="student-weight-table">${state.students.map((student) => `<div class="student-weight-row">
-          <span title="${attr(student.name)}">${esc(student.name)}</span>
+          <input type="checkbox" data-student-select="${attr(student.id)}" aria-label="选择 ${attr(student.name)}">
+          <input class="student-name-input" type="text" maxlength="24" value="${attr(student.name)}" data-student-name="${attr(student.id)}" aria-label="学生姓名">
           <input class="student-weight-input" type="number" min="1" max="20" value="${Math.max(1, Number(student.weight) || 1)}" data-student-weight="${attr(student.id)}" aria-label="${attr(student.name)} 的选中权重">
           <small>${student.pickedCount || 0} 次</small>
         </div>`).join('')}</div>
       </div>
       <footer class="modal-footer">
-        <span class="modal-footer-note">${icon('shield')}默认权重均为 1</span>
+        <button type="button" class="btn btn-danger" id="deleteSelectedStudents">${icon('trash')}删除选中</button>
+        <span class="modal-footer-note">${icon('shield')}权重 1—20</span>
         <div class="modal-footer-actions">
           <button type="button" class="btn btn-light" data-close-modal>取消</button>
-          <button type="button" class="btn btn-primary" id="saveStudentWeights">保存权重</button>
+          <button type="button" class="btn btn-primary" id="saveStudentWeights">保存修改</button>
         </div>
       </footer>
     </div>`;
@@ -3508,6 +4475,26 @@
   }
 
   async function saveStudentWeights() {
+    const rows = $$('[data-student-name]');
+    const names = new Set();
+    for (const input of rows) {
+      const name = String(input.value || '').trim().slice(0, 24);
+      if (!name) {
+        showToast('学生姓名不能为空。', { type: 'warn' });
+        input.focus();
+        return;
+      }
+      if (names.has(name)) {
+        showToast(`学生姓名「${name}」重复，请先修改。`, { type: 'warn' });
+        input.focus();
+        return;
+      }
+      names.add(name);
+    }
+    rows.forEach((input) => {
+      const student = state.students.find((entry) => entry.id === input.dataset.studentName);
+      if (student) student.name = String(input.value || '').trim().slice(0, 24);
+    });
     $$('[data-student-weight]').forEach((input) => {
       const student = state.students.find((entry) => entry.id === input.dataset.studentWeight);
       if (student) student.weight = Math.max(1, Math.min(20, Math.floor(Number(input.value) || 1)));
@@ -3516,7 +4503,29 @@
     if (!ok) return;
     closeModal();
     renderStudents();
-    showToast('学生选中权重已保存。', { type: 'success', title: '后台设置已更新' });
+    showToast('学生姓名和权重已保存。', { type: 'success', title: '后台设置已更新' });
+  }
+
+  function deleteSelectedStudents() {
+    const selected = $$('[data-student-select]:checked').map((input) => input.dataset.studentSelect);
+    if (!selected.length) {
+      showToast('请先勾选要删除的学生。', { type: 'warn' });
+      return;
+    }
+    const names = state.students.filter((student) => selected.includes(student.id)).map((student) => student.name);
+    openConfirm({
+      title: '删除选中的学生',
+      message: `将从名单中删除 ${selected.length} 名学生：${esc(names.join('、'))}。此操作不会删除课件或成绩。`,
+      danger: true,
+      confirmText: '确认删除',
+      onConfirm: async () => {
+        state.students = state.students.filter((student) => !selected.includes(student.id));
+        await persistLibrary();
+        closeModal();
+        renderStudents();
+        showToast(`已删除 ${selected.length} 名学生。`, { type: 'success' });
+      }
+    });
   }
 
   function renderAll() {
@@ -4664,12 +5673,15 @@
           </ul>
           <h3>课堂工具</h3>
           <ul class="help-list">
-            <li><strong>AI 解答</strong>：填写并加密保存 DeepSeek API Key，可在各学科提问并获得 AI 回答。</li>
+            <li><strong>AI 解答</strong>：填写并加密保存 DeepSeek API Key，可选择模型/推理等级、上传附件、AI 翻译和图片转文字。</li>
+            <li><strong>通用设置</strong>：统一设置所有 AI 功能的 API Key、默认模型/推理等级和时事政治弹幕。</li>
             <li><strong>单词天天练</strong>：高中英语 3500 词库随机出题，英译汉/汉译英四选一，支持昵称通关排名。</li>
-            <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址；可在右侧加密保存账号密码，登录页自动填充。</li>
+            <li><strong>函数图像 / 科学计算器</strong>：绘制多条函数曲线并缩放、拖动；计算器支持三角函数、对数、幂等。</li>
+            <li><strong>时事政治</strong>：抓取权威媒体 RSS，调用 DeepSeek 按政治教材章节匹配新闻，可打开原文并滚动弹幕。</li>
+            <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址并支持网页缩放；可在右侧加密保存账号密码，登录页自动填充。</li>
             <li><strong>展台 / 白板</strong>：支持 1080P/720P/480P 采集、清晰度增强、旋转/镜像、全屏、缩放、鼠标移动、多色批画和橡皮；全屏时底部工具栏可直接控制。</li>
             <li><strong>科目投票</strong>：每天按日期为 13 个学科投票，查看结果需要管理员密码。</li>
-            <li><strong>随机点名</strong>：导入 Excel/CSV 名单，按可调权重随机抽取学生；后台设置需要管理员密码。</li>
+            <li><strong>随机点名</strong>：导入 Excel/CSV 名单，可一次抽取多人、按可调权重抽取；后台可改名、调整权重、批量/指定删除。</li>
             <li><strong>手机投屏</strong>：手机扫描二维码后通过同一 Wi-Fi 投摄像头或屏幕；蓝牙用于设备配对。</li>
             <li><strong>课堂计时器</strong>：预设/自定义倒计时，支持暂停、重置、全屏与结束提示音。</li>
             <li><strong>课程表</strong>：直接修改节次、时间和课程，周六/周日可切换 A 表/B 表。</li>
@@ -4681,8 +5693,8 @@
             <img src="../assets/school-badge.png" alt="枣庄八中校徽">
             <div class="help-team-copy">
               <strong>制作团队</strong>
-              <span>开发者：陈凯阳　技术支持：孙浩翔</span>
-              <span>关键词提供：桑晨皓、任泽昱　使用 AI：Deepseek-V4.1-Flash</span>
+              <span>开发者：陈凯阳　技术支持：孙浩翔、龚昊</span>
+              <span>赞助人：李青洋　关键词提供：桑晨皓、任泽昱　使用 AI：DeepSeek Chat / Reasoner</span>
               <span>该软件已在 GitHub 开源</span>
               <a href="mailto:ba4iitqrz@163.com" data-email="ba4iitqrz@163.com">开发者邮箱：ba4iitqrz@163.com</a>
             </div>
@@ -4820,6 +5832,10 @@
     if (page === 'students') renderStudents();
     if (page === 'ai') renderAi();
     if (page === 'wordgame') renderWordGame();
+    if (page === 'graph') renderGraph();
+    if (page === 'calculator') renderCalculator();
+    if (page === 'politics') renderPolitics();
+    if (page === 'settings') renderSettings();
     if (page === 'phone') renderPhone();
     if (page === 'timer') renderTimer();
     if (page === 'data') renderData();
@@ -5175,6 +6191,39 @@
 
   function handleDocumentClick(event) {
     if (event.target.closest('#modalLayer') || event.target.closest('#detailDrawer')) return;
+
+    const graphRemove = event.target.closest('[data-graph-remove]');
+    if (graphRemove) {
+      state.graph.functions = state.graph.functions.filter((fn) => fn.id !== graphRemove.dataset.graphRemove);
+      renderGraphList();
+      drawGraph();
+      return;
+    }
+    const graphColor = event.target.closest('[data-graph-color]');
+    if (graphColor) {
+      const fn = state.graph.functions.find((entry) => entry.id === graphColor.dataset.graphColor);
+      if (fn) {
+        const index = GRAPH_COLORS.indexOf(fn.color);
+        fn.color = GRAPH_COLORS[(index + 1) % GRAPH_COLORS.length];
+        renderGraphList();
+        drawGraph();
+      }
+      return;
+    }
+    const calcHistory = event.target.closest('[data-calc-history]');
+    if (calcHistory) {
+      state.calc.expression = calcHistory.dataset.calcHistory || '';
+      state.calc.result = '';
+      calcShow(state.calc.expression, '');
+      return;
+    }
+    const politicsLink = event.target.closest('[data-politics-link]');
+    if (politicsLink) {
+      api.openExternal(politicsLink.dataset.politicsLink).then((result) => {
+        if (result && !result.ok) showToast(result.error || '无法打开新闻链接', { type: 'warn' });
+      });
+      return;
+    }
 
     const helpLink = event.target.closest('[data-open-help]');
     if (helpLink) {
@@ -5684,6 +6733,10 @@
         saveStudentWeights();
         return;
       }
+      if (event.target.closest('#deleteSelectedStudents')) {
+        deleteSelectedStudents();
+        return;
+      }
       const sourceButton = event.target.closest('[data-import-source]');
       if (sourceButton) {
         startImportScan(sourceButton.dataset.importSource);
@@ -5724,6 +6777,10 @@
     });
 
     ui.modalLayer.addEventListener('change', (event) => {
+      if (event.target.id === 'studentSelectAll') {
+        $$('[data-student-select]').forEach((input) => { input.checked = event.target.checked; });
+        return;
+      }
       if (event.target.id === 'batchDeleteSelectAll') {
         const checked = event.target.checked;
         state.batchDeleteSelected.clear();
@@ -5891,6 +6948,8 @@
       state.students = normalizeClientStudents(result.students);
       state.wordGameScores = normalizeClientWordGameScores(result.wordGameScores);
       state.settings = result.settings && typeof result.settings === 'object' ? result.settings : {};
+      state.settings.ai = normalizeAiSettings(state.settings.ai);
+      state.settings.danmaku = normalizeDanmakuSettings(state.settings.danmaku);
       state.dataPath = result.libraryPath || result.dataDir || '';
       if (!state.settings.initialized && state.items.length === 0) {
         state.items = buildDemoItems();
