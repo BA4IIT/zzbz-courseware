@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -1078,21 +1078,24 @@ function parseRssItems(xml, source) {
     const link = read('link') || (block.match(/<link[^>]*href=["']([^"']+)["']/i) || [])[1] || '';
     const description = read('description') || read('summary');
     const dateText = read('pubDate') || read('updated') || read('published');
-    const publishedAt = dateText ? new Date(dateText) : new Date();
-    if (!title || !link) continue;
+    if (!title || !link || !dateText) continue;
+    const publishedAt = new Date(dateText);
+    // 没有合法发布时间的条目直接排除，不能用抓取时间冒充新闻发布时间。
+    if (Number.isNaN(publishedAt.getTime())) continue;
     items.push({
       title,
       link,
       description: description.slice(0, 500),
       source,
-      publishedAt: Number.isNaN(publishedAt.getTime()) ? new Date().toISOString() : publishedAt.toISOString()
+      publishedAt: publishedAt.toISOString()
     });
   }
   return items;
 }
 
 async function fetchPoliticalNews(days) {
-  const since = Date.now() - Math.max(1, Math.min(30, Number(days) || 7)) * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const since = now - Math.max(1, Math.min(180, Number(days) || 7)) * 24 * 60 * 60 * 1000;
   const results = await Promise.allSettled(POLITICS_FEEDS.map(async (feed) => {
     const response = await net.fetch(feed.url, {
       headers: { 'User-Agent': 'Mozilla/5.0 ZZBZ-Courseware-News', Accept: 'application/rss+xml,text/xml,text/html' }
@@ -1108,7 +1111,8 @@ async function fetchPoliticalNews(days) {
       const key = item.title.replace(/\s+/g, '');
       if (seen.has(key)) return;
       const time = new Date(item.publishedAt).getTime();
-      if (Number.isFinite(time) && time < since) return;
+      // 严格限制在电脑当前时间往前推算的范围内，未来时间和超期新闻不展示。
+      if (!Number.isFinite(time) || time < since || time > now + 5 * 60 * 1000) return;
       seen.add(key);
       items.push(item);
     });
@@ -1589,7 +1593,7 @@ function registerIpc() {
   ipcMain.handle('ai:read-file', async (_event, filePath) => readAiAttachment(filePath));
   ipcMain.handle('ocr:image', async (_event, filePath) => ocrImageFile(filePath));
   ipcMain.handle('politics:search', async (_event, payload) => {
-    const days = Math.max(1, Math.min(30, Number(payload && payload.days) || 7));
+    const days = Math.max(1, Math.min(180, Number(payload && payload.days) || 7));
     const chapters = (Array.isArray(payload && payload.chapters) ? payload.chapters : [])
       .map((chapter) => normalizeString(chapter, 160))
       .filter(Boolean)
@@ -1633,7 +1637,16 @@ function registerIpc() {
         }));
         if (aiUsed) warning = 'AI 没有筛出与所选章节直接相关的新闻，已展示最新权威新闻供参考。';
       }
-      return { ok: true, items: items.slice(0, 24), aiUsed, warning, fetchedAt: new Date().toISOString() };
+      return {
+        ok: true,
+        items: items.slice(0, 24),
+        aiUsed,
+        warning,
+        fetchedAt: new Date().toISOString(),
+        rangeFrom: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
+        rangeTo: new Date().toISOString(),
+        days
+      };
     } catch (error) {
       return { ok: false, error: `时事政治查询失败：${error.message}` };
     }

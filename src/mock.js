@@ -105,8 +105,8 @@
     async checkUpdate() {
       return {
         ok: true,
-        currentVersion: '1.7.0',
-        latestVersion: '1.7.0',
+        currentVersion: '1.8.0',
+        latestVersion: '1.8.0',
         isLatest: true,
         updateAvailable: false,
         releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
@@ -164,7 +164,7 @@
       return {
         ok: true,
         name: '枣庄八中集成桌面教学系统',
-        version: '1.7.0',
+        version: '1.8.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',

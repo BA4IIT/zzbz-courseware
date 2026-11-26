@@ -438,6 +438,9 @@
     cameraClarity: 100,
     cameraRotation: 0,
     cameraMirrorX: false,
+    cameraLocked: false,
+    cameraFocusMode: 'continuous',
+    cameraFocusDistance: 0.5,
     browserInitialized: false,
     browserZoom: 1,
     browserCredentials: null,
@@ -468,8 +471,10 @@
       lastX: 0,
       lastY: 0
     },
+    whiteboardPages: [''],
+    whiteboardPageIndex: 0,
     calc: { expression: '', result: '', angleMode: 'rad', history: [] },
-    politics: { bookId: '', chapter: '', days: 7, loading: false, items: [], warning: '', aiUsed: false },
+    politics: { bookId: '', chapter: '', days: 7, loading: false, items: [], warning: '', aiUsed: false, rangeFrom: '', rangeTo: '' },
     timer: { total: 300, remaining: 300, running: false, endAt: 0, interval: 0, lastBeep: 0 },
     updateChecking: false,
     updateDownloading: false,
@@ -1251,7 +1256,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.7.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '1.8.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1838,6 +1843,10 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
+    if (board.name === 'whiteboard') {
+      state.whiteboardPages[state.whiteboardPageIndex] = '';
+      updateWhiteboardPageLabels();
+    }
   }
 
   function initDrawingBoard(board) {
@@ -2044,6 +2053,120 @@
     }
   }
 
+  function renderCameraLockState() {
+    const label = state.cameraLocked ? '解锁画面' : '锁定画面';
+    const button = $('#cameraLock');
+    if (button) {
+      button.classList.toggle('is-active', state.cameraLocked);
+      button.innerHTML = `${icon(state.cameraLocked ? 'refresh' : 'lock')}${label}`;
+    }
+    $$('[data-camera-lock]').forEach((entry) => {
+      entry.classList.toggle('is-active', state.cameraLocked);
+      entry.innerHTML = `${icon(state.cameraLocked ? 'refresh' : 'lock')}${state.cameraLocked ? '解锁' : '锁定'}`;
+    });
+    $$('[data-camera-focus]').forEach((entry) => {
+      entry.classList.toggle('is-active', entry.dataset.cameraFocus === 'auto' && state.cameraFocusMode === 'continuous');
+    });
+  }
+
+  function toggleCameraLock() {
+    const video = $('#cameraVideo');
+    const freeze = $('#cameraFreeze');
+    if (!video || !state.cameraStream) {
+      showToast('请先启动摄像头。', { type: 'warn' });
+      return;
+    }
+    if (!state.cameraLocked) {
+      if (!video.videoWidth) {
+        showToast('画面尚未准备好，请稍后再试。', { type: 'warn' });
+        return;
+      }
+      const snapshot = document.createElement('canvas');
+      snapshot.width = video.videoWidth;
+      snapshot.height = video.videoHeight;
+      snapshot.getContext('2d').drawImage(video, 0, 0, snapshot.width, snapshot.height);
+      if (freeze) {
+        freeze.src = snapshot.toDataURL('image/jpeg', 0.92);
+        freeze.hidden = false;
+      }
+      video.pause();
+      state.cameraLocked = true;
+      showToast('展台画面已锁定，可继续批画或拍照。', { type: 'success' });
+    } else {
+      if (freeze) {
+        freeze.hidden = true;
+        freeze.removeAttribute('src');
+      }
+      video.play().catch(() => {});
+      state.cameraLocked = false;
+      showToast('展台画面已解锁。', { type: 'success' });
+    }
+    renderCameraLockState();
+  }
+
+  async function captureCameraPhoto() {
+    const video = $('#cameraVideo');
+    const canvas = $('#cameraCanvas');
+    if (!video || !state.cameraStream || !video.videoWidth) {
+      showToast('请先启动摄像头再拍照。', { type: 'warn' });
+      return;
+    }
+    const output = document.createElement('canvas');
+    output.width = video.videoWidth;
+    output.height = video.videoHeight;
+    const context = output.getContext('2d');
+    context.fillStyle = '#111';
+    context.fillRect(0, 0, output.width, output.height);
+    context.drawImage(video, 0, 0, output.width, output.height);
+    if (canvas && canvas.width && canvas.height) {
+      context.drawImage(canvas, 0, 0, output.width, output.height);
+    }
+    const result = await api.savePng({
+      dataUrl: output.toDataURL('image/png'),
+      defaultName: `展台拍照_${todayStamp()}.png`
+    });
+    if (result && result.ok && !result.canceled) {
+      showToast(`照片已保存：${result.filePath}`, { type: 'success', title: '展台拍照', duration: 6000 });
+    } else if (result && !result.canceled) {
+      showToast(result.error || '保存照片失败', { type: 'error' });
+    }
+  }
+
+  async function applyCameraFocus(mode) {
+    const track = state.cameraStream?.getVideoTracks?.()[0];
+    if (!track || !track.applyConstraints) {
+      showToast('当前摄像头不支持对焦控制。', { type: 'warn' });
+      return;
+    }
+    try {
+      if (mode === 'auto') {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        state.cameraFocusMode = 'continuous';
+        showToast('已恢复自动连续对焦。', { type: 'success' });
+      } else {
+        const caps = track.getCapabilities?.() || {};
+        if (!caps.focusDistance) {
+          showToast('此摄像头不支持手动对焦，请使用自动对焦或调整镜头。', { type: 'warn' });
+          return;
+        }
+        const step = Number(caps.focusDistance.step) || 0.05;
+        const min = Number(caps.focusDistance.min) || 0;
+        const max = Number(caps.focusDistance.max) || 1;
+        const direction = mode === 'near' ? -1 : 1;
+        const current = track.getSettings?.().focusDistance;
+        const base = current == null ? state.cameraFocusDistance : Number(current);
+        const next = Math.max(min, Math.min(max, base + direction * Math.max(step, (max - min) * 0.08)));
+        await track.applyConstraints({ advanced: [{ focusMode: 'manual' }, { focusDistance: next }] });
+        state.cameraFocusDistance = next;
+        state.cameraFocusMode = 'manual';
+        showToast(mode === 'near' ? '已向前对焦。' : '已向后对焦。', { type: 'success' });
+      }
+    } catch (error) {
+      showToast(`对焦调整失败：${error.message}`, { type: 'warn' });
+    }
+    renderCameraLockState();
+  }
+
   async function startCamera(deviceId) {
     if (state.cameraStarting) return;
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -2094,6 +2217,12 @@
         video.srcObject = stream;
         await video.play().catch(() => {});
       }
+      state.cameraLocked = false;
+      const freeze = $('#cameraFreeze');
+      if (freeze) {
+        freeze.hidden = true;
+        freeze.removeAttribute('src');
+      }
       const empty = $('#cameraEmpty');
       if (empty) empty.hidden = true;
       const liveBadge = $('#cameraLiveBadge');
@@ -2141,11 +2270,18 @@
     }
     const video = $('#cameraVideo');
     if (video) video.srcObject = null;
+    const freeze = $('#cameraFreeze');
+    if (freeze) {
+      freeze.hidden = true;
+      freeze.removeAttribute('src');
+    }
+    state.cameraLocked = false;
     const empty = $('#cameraEmpty');
     if (empty) empty.hidden = false;
     const liveBadge = $('#cameraLiveBadge');
     if (liveBadge) liveBadge.hidden = true;
     state.cameraAutoStarted = false;
+    renderCameraLockState();
     cameraStatus('摄像头已停止', false);
   }
 
@@ -2160,6 +2296,7 @@
     const clarityInput = $('#cameraClarity');
     if (clarityInput) clarityInput.value = String(state.cameraClarity);
     applyCameraEnhancements();
+    renderCameraLockState();
     updateCameraResolutionInfo();
     if (!state.cameraAutoStarted) {
       state.cameraAutoStarted = true;
@@ -2169,9 +2306,81 @@
 
   /* ---------------- 白板 ---------------- */
 
+  function updateWhiteboardPageLabels() {
+    const label = `第 ${state.whiteboardPageIndex + 1} / ${state.whiteboardPages.length} 页`;
+    const short = `${state.whiteboardPageIndex + 1}/${state.whiteboardPages.length}`;
+    const side = $('#whiteboardPageLabel');
+    const full = $('#whiteboardFullscreenPageLabel');
+    if (side) side.textContent = label;
+    if (full) full.textContent = short;
+  }
+
+  function saveWhiteboardPage() {
+    const canvas = $('#whiteboardCanvas');
+    if (!canvas || !canvas.width) return;
+    state.whiteboardPages[state.whiteboardPageIndex] = canvas.toDataURL('image/png');
+  }
+
+  function loadWhiteboardPage(index) {
+    const canvas = $('#whiteboardCanvas');
+    if (!canvas) return;
+    state.whiteboardPageIndex = Math.max(0, Math.min(state.whiteboardPages.length - 1, index));
+    updateWhiteboardPageLabels();
+    const data = state.whiteboardPages[state.whiteboardPageIndex];
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    if (!data) return;
+    const image = new Image();
+    image.onload = () => {
+      const current = $('#whiteboardCanvas');
+      if (!current) return;
+      const context = current.getContext('2d');
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, current.width, current.height);
+      context.drawImage(image, 0, 0, current.width, current.height);
+      context.restore();
+    };
+    image.src = data;
+  }
+
+  function switchWhiteboardPage(action) {
+    saveWhiteboardPage();
+    if (action === 'add') {
+      state.whiteboardPages.push('');
+      state.whiteboardPageIndex = state.whiteboardPages.length - 1;
+      loadWhiteboardPage(state.whiteboardPageIndex);
+      return;
+    }
+    if (action === 'delete') {
+      if (state.whiteboardPages.length === 1) {
+        state.whiteboardPages[0] = '';
+        loadWhiteboardPage(0);
+        showToast('已清空当前白板页。', { type: 'info' });
+        return;
+      }
+      state.whiteboardPages.splice(state.whiteboardPageIndex, 1);
+      loadWhiteboardPage(Math.min(state.whiteboardPageIndex, state.whiteboardPages.length - 1));
+      showToast('当前白板页已删除。', { type: 'success' });
+      return;
+    }
+    if (action === 'prev' && state.whiteboardPageIndex > 0) {
+      loadWhiteboardPage(state.whiteboardPageIndex - 1);
+    } else if (action === 'next' && state.whiteboardPageIndex < state.whiteboardPages.length - 1) {
+      loadWhiteboardPage(state.whiteboardPageIndex + 1);
+    }
+  }
+
   function renderWhiteboard() {
     initDrawingBoard(drawingState.whiteboard);
-    requestAnimationFrame(() => resizeDrawingCanvas(drawingState.whiteboard));
+    requestAnimationFrame(() => {
+      resizeDrawingCanvas(drawingState.whiteboard);
+      updateWhiteboardPageLabels();
+    });
+    updateWhiteboardPageLabels();
   }
 
   async function saveWhiteboardImage() {
@@ -2732,6 +2941,13 @@
     if (cameraStartButton) cameraStartButton.addEventListener('click', () => startCamera($('#cameraDeviceSelect')?.value || ''));
     const cameraStopButton = $('#cameraStop');
     if (cameraStopButton) cameraStopButton.addEventListener('click', stopCamera);
+    const cameraLockButton = $('#cameraLock');
+    if (cameraLockButton) cameraLockButton.addEventListener('click', toggleCameraLock);
+    const cameraPhotoButton = $('#cameraPhoto');
+    if (cameraPhotoButton) cameraPhotoButton.addEventListener('click', captureCameraPhoto);
+    $$('[data-camera-lock]').forEach((button) => button.addEventListener('click', toggleCameraLock));
+    $$('[data-camera-photo]').forEach((button) => button.addEventListener('click', captureCameraPhoto));
+    $$('[data-camera-focus]').forEach((button) => button.addEventListener('click', () => applyCameraFocus(button.dataset.cameraFocus)));
     const cameraDeviceSelect = $('#cameraDeviceSelect');
     if (cameraDeviceSelect) cameraDeviceSelect.addEventListener('change', () => startCamera(cameraDeviceSelect.value));
     const cameraResolution = $('#cameraResolution');
@@ -2794,6 +3010,7 @@
     }
     const whiteboardSave = $('#whiteboardSave');
     if (whiteboardSave) whiteboardSave.addEventListener('click', saveWhiteboardImage);
+    $$('[data-whiteboard-page]').forEach((button) => button.addEventListener('click', () => switchWhiteboardPage(button.dataset.whiteboardPage)));
 
     $$('[data-zoom-action]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -2911,6 +3128,12 @@
     if (graphExpression) graphExpression.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') { event.preventDefault(); addGraphFunction(); }
     });
+    $$('[data-graph-insert]').forEach((button) => button.addEventListener('click', () => {
+      insertGraphText(button.dataset.graphInsert || '');
+    }));
+    $$('[data-graph-action]').forEach((button) => button.addEventListener('click', () => {
+      handleGraphKeypad(button.dataset.graphAction);
+    }));
     const graphCanvas = $('#graphCanvas');
     if (graphCanvas && !graphCanvas.dataset.bound) {
       graphCanvas.dataset.bound = '1';
@@ -3215,6 +3438,36 @@
       : '<div class="graph-list-empty">还没有函数<br><small>输入表达式后点击「绘制」</small></div>';
   }
 
+  function insertGraphText(text) {
+    const input = $('#graphExpression');
+    if (!input) return;
+    const value = input.value;
+    const start = input.selectionStart == null ? value.length : input.selectionStart;
+    const end = input.selectionEnd == null ? value.length : input.selectionEnd;
+    input.value = `${value.slice(0, start)}${text}${value.slice(end)}`;
+    const position = start + text.length;
+    input.focus();
+    try { input.setSelectionRange(position, position); } catch (error) { /* ignore */ }
+  }
+
+  function handleGraphKeypad(action) {
+    const input = $('#graphExpression');
+    if (!input) return;
+    if (action === 'clear') {
+      input.value = '';
+      input.focus();
+    } else if (action === 'backspace') {
+      const start = input.selectionStart == null ? input.value.length : input.selectionStart;
+      const end = input.selectionEnd == null ? start : input.selectionEnd;
+      if (start !== end) input.value = input.value.slice(0, start) + input.value.slice(end);
+      else if (start > 0) input.value = input.value.slice(0, start - 1) + input.value.slice(start);
+      input.focus();
+      try { input.setSelectionRange(Math.max(0, start - (start === end ? 1 : 0)), Math.max(0, start - (start === end ? 1 : 0))); } catch (error) { /* ignore */ }
+    } else if (action === 'draw') {
+      addGraphFunction();
+    }
+  }
+
   function addGraphFunction() {
     const input = $('#graphExpression');
     const errorNode = $('#graphError');
@@ -3349,7 +3602,8 @@
   function formatNewsDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
-    return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    const pad = (number) => String(number).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
   function renderPoliticsResults() {
@@ -3393,7 +3647,10 @@
     renderPoliticsFilters();
     const status = $('#politicsStatus');
     if (status && !state.politics.loading) {
-      status.innerHTML = `<span></span>${state.politics.items.length ? `已获取 ${state.politics.items.length} 条新闻${state.politics.aiUsed ? ' · DeepSeek 已匹配章节' : ' · 关键词匹配'}` : '选择课本和章节后开始查询；新闻来自权威媒体 RSS。'}`;
+      const range = state.politics.rangeFrom && state.politics.rangeTo
+        ? `查询范围：${formatNewsDate(state.politics.rangeFrom)} 至 ${formatNewsDate(state.politics.rangeTo)}`
+        : '选择课本和章节后开始查询；新闻来自权威媒体 RSS。';
+      status.innerHTML = `<span></span>${state.politics.items.length ? `已获取 ${state.politics.items.length} 条新闻${state.politics.aiUsed ? ' · DeepSeek 已匹配章节' : ' · 关键词匹配'} · ${range}` : range}`;
     }
     renderPoliticsResults();
     renderPoliticsDanmaku();
@@ -3403,7 +3660,7 @@
     if (state.politics.loading) return;
     const bookId = $('#politicsBookSelect')?.value || '';
     const chapter = $('#politicsChapterSelect')?.value || '';
-    const days = Number($('#politicsDays')?.value) || 7;
+    const days = Math.max(1, Math.min(180, Number($('#politicsDays')?.value) || 7));
     const subject = politicsSubject();
     const book = subject?.books.find((entry) => entry.id === bookId);
     let chapters = [];
@@ -3416,6 +3673,8 @@
     state.politics.loading = true;
     state.politics.items = [];
     state.politics.warning = '';
+    state.politics.rangeFrom = '';
+    state.politics.rangeTo = '';
     renderPolitics();
     const button = $('#politicsSearchButton');
     if (button) button.disabled = true;
@@ -3437,6 +3696,8 @@
       state.politics.items = result.items || [];
       state.politics.aiUsed = Boolean(result.aiUsed);
       state.politics.warning = result.warning || '';
+      state.politics.rangeFrom = result.rangeFrom || '';
+      state.politics.rangeTo = result.rangeTo || '';
       renderPolitics();
       if (state.politics.items.length) showToast(`已获取 ${state.politics.items.length} 条时事新闻。`, { type: 'success' });
     } finally {
@@ -5693,7 +5954,7 @@
             <img src="../assets/school-badge.png" alt="枣庄八中校徽">
             <div class="help-team-copy">
               <strong>制作团队</strong>
-              <span>开发者：陈凯阳　技术支持：孙浩翔、龚昊</span>
+              <span>开发者：陈凯阳　技术支持：孙浩翔、龚豪章</span>
               <span>赞助人：李青洋　关键词提供：桑晨皓、任泽昱　使用 AI：DeepSeek Chat / Reasoner</span>
               <span>该软件已在 GitHub 开源</span>
               <a href="mailto:ba4iitqrz@163.com" data-email="ba4iitqrz@163.com">开发者邮箱：ba4iitqrz@163.com</a>

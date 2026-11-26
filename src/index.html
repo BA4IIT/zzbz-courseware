@@ -579,6 +579,7 @@
                 <div class="camera-stage" id="cameraStage">
                   <div class="camera-content" id="cameraContent">
                     <video id="cameraVideo" autoplay muted playsinline></video>
+                    <img id="cameraFreeze" class="camera-freeze" alt="已锁定的展台画面" hidden>
                     <canvas id="cameraCanvas" class="camera-canvas"></canvas>
                   </div>
                   <div class="camera-empty" id="cameraEmpty"><span data-icon="camera"></span><strong>正在寻找摄像头…</strong><p>连接 USB 摄像头或展台后，画面会自动出现在这里。</p></div>
@@ -597,6 +598,9 @@
                     <button type="button" class="fs-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
                     <button type="button" class="fs-tool" data-camera-rotate-step><span data-icon="rotate"></span>旋转</button>
                     <button type="button" class="fs-tool" data-camera-mirror="x"><span data-icon="flip"></span>镜像</button>
+                    <button type="button" class="fs-tool" data-camera-focus="auto"><span data-icon="camera"></span>对焦</button>
+                    <button type="button" class="fs-tool" data-camera-lock><span data-icon="lock"></span>锁定</button>
+                    <button type="button" class="fs-tool" data-camera-photo><span data-icon="download"></span>拍照</button>
                     <span class="fs-divider"></span>
                     <button type="button" class="fs-tool" data-zoom-action="out" data-board="camera">−</button>
                     <span class="fs-zoom" data-zoom-label="camera">100%</span>
@@ -624,6 +628,16 @@
                       <button type="button" class="drawing-tool" data-camera-rotate-step><span data-icon="rotate"></span>旋转</button>
                       <button type="button" class="drawing-tool" data-camera-mirror="x"><span data-icon="flip"></span>水平翻转</button>
                       <button type="button" class="drawing-tool" data-camera-orientation-reset><span data-icon="refresh"></span>复位</button>
+                    </div>
+                    <div class="camera-focus-row">
+                      <span>对焦</span>
+                      <button type="button" class="drawing-tool" data-camera-focus="auto"><span data-icon="camera"></span>自动</button>
+                      <button type="button" class="drawing-tool" data-camera-focus="near">对焦近</button>
+                      <button type="button" class="drawing-tool" data-camera-focus="far">对焦远</button>
+                    </div>
+                    <div class="camera-action-row">
+                      <button type="button" class="btn btn-soft" id="cameraLock"><span data-icon="lock"></span>锁定画面</button>
+                      <button type="button" class="btn btn-soft" id="cameraPhoto"><span data-icon="download"></span>拍照</button>
                     </div>
                     <div class="camera-button-row">
                       <button type="button" class="btn btn-primary" id="cameraStart"><span data-icon="camera"></span>启动 / 重连</button>
@@ -684,6 +698,10 @@
                     <button type="button" class="fs-tool" data-draw-tool="move"><span data-icon="hand"></span>鼠标</button>
                     <button type="button" class="fs-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
                     <button type="button" class="fs-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
+                    <button type="button" class="fs-tool" data-whiteboard-page="prev">‹</button>
+                    <span class="fs-zoom" id="whiteboardFullscreenPageLabel">1/1</span>
+                    <button type="button" class="fs-tool" data-whiteboard-page="next">›</button>
+                    <button type="button" class="fs-tool" data-whiteboard-page="add">＋页</button>
                     <span class="fs-divider"></span>
                     <button type="button" class="fs-tool" data-zoom-action="out" data-board="whiteboard">−</button>
                     <span class="fs-zoom" data-zoom-label="whiteboard">100%</span>
@@ -715,6 +733,13 @@
                       <button type="button" class="drawing-tool" data-draw-tool="move"><span data-icon="hand"></span>鼠标</button>
                       <button type="button" class="drawing-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
                       <button type="button" class="drawing-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
+                    </div>
+                    <div class="whiteboard-page-row">
+                      <button type="button" class="drawing-tool" data-whiteboard-page="prev">‹ 上一页</button>
+                      <span id="whiteboardPageLabel">第 1 / 1 页</span>
+                      <button type="button" class="drawing-tool" data-whiteboard-page="next">下一页 ›</button>
+                      <button type="button" class="drawing-tool" data-whiteboard-page="add">＋ 新建</button>
+                      <button type="button" class="drawing-tool" data-whiteboard-page="delete">删除本页</button>
                     </div>
                     <label class="drawing-width">笔迹粗细 <input type="range" id="whiteboardPenWidth" min="1" max="18" value="5"></label>
                     <button type="button" class="btn btn-light whiteboard-save" id="whiteboardSave"><span data-icon="download"></span>保存为图片</button>
@@ -1040,6 +1065,16 @@
                     <input id="graphExpression" type="text" placeholder="输入表达式，例如 x^2 - 2x + 1" spellcheck="false" autocomplete="off">
                     <button type="button" class="btn btn-primary" id="graphAdd">绘制</button>
                   </div>
+                  <div class="graph-math-keypad">
+                    <div class="graph-math-head"><span data-icon="calculator"></span><strong>数学键盘</strong><span>点击插入表达式</span></div>
+                    <div class="graph-math-grid">
+                      <button type="button" data-graph-insert="sin(">sin</button><button type="button" data-graph-insert="cos(">cos</button><button type="button" data-graph-insert="tan(">tan</button><button type="button" data-graph-insert="asin(">sin⁻¹</button><button type="button" data-graph-insert="acos(">cos⁻¹</button><button type="button" data-graph-insert="atan(">tan⁻¹</button><button type="button" class="graph-keypad-fn" data-graph-action="clear">C</button>
+                      <button type="button" data-graph-insert="ln(">ln</button><button type="button" data-graph-insert="log(">log</button><button type="button" data-graph-insert="sqrt(">√</button><button type="button" data-graph-insert="abs(">|x|</button><button type="button" data-graph-insert="^2">x²</button><button type="button" data-graph-insert="^">xʸ</button><button type="button" class="graph-keypad-fn" data-graph-action="backspace">⌫</button>
+                      <button type="button" data-graph-insert="pi">π</button><button type="button" data-graph-insert="e">e</button><button type="button" data-graph-insert="x">x</button><button type="button" data-graph-insert="(">(</button><button type="button" data-graph-insert=")">)</button><button type="button" data-graph-insert="/">÷</button><button type="button" data-graph-insert="*">×</button>
+                      <button type="button" data-graph-insert="7">7</button><button type="button" data-graph-insert="8">8</button><button type="button" data-graph-insert="9">9</button><button type="button" data-graph-insert="4">4</button><button type="button" data-graph-insert="5">5</button><button type="button" data-graph-insert="6">6</button><button type="button" class="graph-keypad-enter" data-graph-action="draw">绘制 ↵</button>
+                      <button type="button" data-graph-insert="1">1</button><button type="button" data-graph-insert="2">2</button><button type="button" data-graph-insert="3">3</button><button type="button" data-graph-insert="0">0</button><button type="button" data-graph-insert=".">.</button><button type="button" data-graph-insert="-">−</button><button type="button" data-graph-insert="+">+</button>
+                    </div>
+                  </div>
                   <div class="graph-canvas-wrap" id="graphCanvasWrap">
                     <canvas id="graphCanvas"></canvas>
                     <div class="graph-empty" id="graphEmpty"><span data-icon="graph"></span><strong>还没有函数曲线</strong><p>在上方输入表达式，点击「绘制」。</p></div>
@@ -1104,7 +1139,7 @@
                   <div class="politics-toolbar">
                     <label class="question-field"><span>政治课本</span><select id="politicsBookSelect"></select></label>
                     <label class="question-field"><span>章节</span><select id="politicsChapterSelect"></select></label>
-                    <label class="question-field"><span>时间范围</span><select id="politicsDays"><option value="1">最近 1 天</option><option value="3">最近 3 天</option><option value="7" selected>最近 7 天</option><option value="30">最近 30 天</option></select></label>
+                    <label class="question-field"><span>时间范围</span><select id="politicsDays"><option value="1">最近 1 天</option><option value="3">最近 3 天</option><option value="7" selected>最近 7 天</option><option value="30">最近 30 天</option><option value="90">最近 3 个月</option><option value="180">最近 6 个月</option></select></label>
                     <button type="button" class="btn btn-primary" id="politicsSearchButton"><span data-icon="sparkles"></span>AI 搜索并匹配章节</button>
                   </div>
                   <div class="politics-status" id="politicsStatus"><span></span>选择课本和章节后开始查询；新闻来自权威媒体 RSS。</div>
@@ -1226,7 +1261,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.7.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.8.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中集成桌面教学系统</strong><span>课件管理 · 课堂互动 · 教学工具</span></div>
@@ -1248,7 +1283,7 @@
             <img class="statusbar-badge" src="../assets/school-badge.png" alt="">
             <span>开发者：陈凯阳</span>
             <i></i>
-            <span>技术支持：孙浩翔、龚昊</span>
+            <span>技术支持：孙浩翔、龚豪章</span>
             <span>赞助人：李青洋</span>
             <i></i>
             <span>关键词提供：桑晨皓、任泽昱</span>
