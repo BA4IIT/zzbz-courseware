@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -799,7 +799,7 @@ async function askDeepSeek(payload) {
   const requestedModel = ['deepseek-chat', 'deepseek-reasoner'].includes(request.model) ? request.model : 'deepseek-chat';
   const reasoning = ['fast', 'standard', 'deep'].includes(request.reasoning) ? request.reasoning : 'standard';
   const model = reasoning === 'deep' ? 'deepseek-reasoner' : requestedModel;
-  const maxTokens = reasoning === 'fast' ? 900 : reasoning === 'deep' ? 3600 : 1800;
+  const maxTokens = Math.max(300, Math.min(8000, Number(request.maxTokens) || (reasoning === 'fast' ? 900 : reasoning === 'deep' ? 3600 : 1800)));
   const temperature = reasoning === 'fast' ? 0.5 : reasoning === 'deep' ? 0.2 : 0.35;
   const systemPrompt = reasoning === 'deep'
     ? '你是枣庄八中集成桌面教学系统的 AI 教学助手。请先分析问题的关键条件，再给出严谨、分步骤的解答；涉及公式时写清推导，涉及事实时不要编造，最后给出简明结论。'
@@ -1046,10 +1046,28 @@ async function ocrImageFile(requestedPath) {
 }
 
 const POLITICS_FEEDS = [
-  { source: '人民网', url: 'https://www.people.com.cn/rss/politics.xml' },
-  { source: '新华网', url: 'https://www.xinhuanet.com/politics/news_politics.xml' },
+  { source: '人民网·时政', url: 'https://www.people.com.cn/rss/politics.xml' },
+  { source: '新华网·时政', url: 'https://www.xinhuanet.com/politics/news_politics.xml' },
   { source: '中国新闻网', url: 'https://www.chinanews.com.cn/rss/scroll-news.xml' },
-  { source: '人民网·国际', url: 'https://www.people.com.cn/rss/world.xml' }
+  { source: '中国新闻网·国内', url: 'https://www.chinanews.com.cn/rss/china.xml' },
+  { source: '人民网·国际', url: 'https://www.people.com.cn/rss/world.xml' },
+  { source: '新华网·国际', url: 'https://www.xinhuanet.com/world/news_world.xml' }
+];
+
+const POLITICS_EXAM_KEYWORDS = [
+  '经济', '政治', '文化', '社会', '生态', '绿色', '发展', '改革', '开放', '创新', '科技',
+  '法治', '依法', '党', '人民', '民主', '治理', '现代化', '高质量', '乡村', '振兴',
+  '民生', '教育', '就业', '医疗', '养老', '粮食', '安全', '国际', '外交', '命运共同体',
+  '一带一路', '全球', '和平', '合作', '贸易', '市场', '企业', '民营', '消费', '投资',
+  '金融', '财政', '税', '环境', '碳', '能源', '文化自信', '传统', '精神', '文明',
+  '青年', '基层', '制度', '法律', '宪法', '政府', '人大', '政协', '民族', '宗教',
+  '统一', '港澳台', '国防', '共同富裕', '人民至上', '全过程人民民主'
+];
+
+const POLITICS_NEGATIVE_KEYWORDS = [
+  '娱乐', '明星', '演唱会', '影视', '综艺', '八卦', '绯闻', '网红', '游戏',
+  '足球', '篮球', '排球', '网球', '乒乓球', '体育比赛', '联赛', '夺冠',
+  '判刑', '抓获', '嫌犯', '命案', '车祸', '醉驾', '赌博', '诈骗'
 ];
 
 function stripXmlTags(value) {
@@ -1069,7 +1087,7 @@ function stripXmlTags(value) {
 function parseRssItems(xml, source) {
   const items = [];
   const matches = String(xml || '').match(/<item\b[\s\S]*?<\/item>/gi) || [];
-  for (const block of matches.slice(0, 80)) {
+  for (const block of matches.slice(0, 140)) {
     const read = (tag) => {
       const match = block.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
       return match ? stripXmlTags(match[1]) : '';
@@ -1117,7 +1135,7 @@ async function fetchPoliticalNews(days) {
       items.push(item);
     });
   });
-  return items.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)).slice(0, 45);
+  return items.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)).slice(0, 180);
 }
 
 function keywordChapterMatch(item, chapters) {
@@ -1135,6 +1153,37 @@ function keywordChapterMatch(item, chapters) {
   return bestScore > 0 ? best : '综合';
 }
 
+function politicsExamScore(item, chapters) {
+  const text = `${item.title} ${item.description || ''}`;
+  const negative = POLITICS_NEGATIVE_KEYWORDS.filter((word) => text.includes(word));
+  if (negative.length >= 2) return -1;
+  const hits = POLITICS_EXAM_KEYWORDS.filter((word) => text.includes(word));
+  const chapterWords = chapters.flatMap((chapter) => String(chapter)
+    .replace(/^(第[一二三四五六七八九十百]+[课单元章节]|必修|选择性必修|选择性|单元|专题)/g, '')
+    .split(/[、，,：:；;（）()\s]+/)
+    .filter((word) => word.length >= 2));
+  const chapterHits = [...new Set(chapterWords)].filter((word) => text.includes(word));
+  return hits.length * 2 + chapterHits.reduce((sum, word) => sum + word.length, 0);
+}
+
+function fallbackExamPoint(item, chapter) {
+  const text = `${item.title} ${item.description || ''}`;
+  const hits = POLITICS_EXAM_KEYWORDS.filter((word) => text.includes(word)).slice(0, 3);
+  if (hits.length) return `可结合「${hits.join('、')}」考查`;
+  return chapter && chapter !== '综合' ? `对应「${chapter}」` : '可作为时政背景材料';
+}
+
+function rankPoliticalNews(items, chapters) {
+  return items
+    .map((item) => ({ item, score: politicsExamScore(item, chapters) }))
+    .filter((entry) => entry.score >= 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.item.publishedAt) - new Date(a.item.publishedAt);
+    })
+    .map((entry) => entry.item);
+}
+
 function extractAiJson(text) {
   const source = String(text || '').replace(/```(?:json)?/gi, '').replace(/```/g, '');
   const start = source.indexOf('[');
@@ -1147,10 +1196,15 @@ async function analyzePoliticalNews(items, chapters, model, reasoning) {
   const compact = items.map((item, index) => ({
     index,
     title: item.title,
-    summary: String(item.description || '').slice(0, 220)
+    summary: String(item.description || '').slice(0, 110)
   }));
-  const prompt = `你是高中政治时事政治备课助手。请从下面的新闻中筛选适合高中政治课堂、并可能与给定教材章节对应的新闻。\n\n可选章节：\n${chapters.map((chapter, index) => `${index + 1}. ${chapter}`).join('\n')}\n\n新闻列表（JSON）：\n${JSON.stringify(compact)}\n\n请严格输出 JSON 数组，不要输出其他文字。每项格式：{"index":新闻序号,"chapter":"最对应的章节原文","summary":"不超过80字的新闻要点说明"}。只保留与政治教材章节相关的新闻，最多20条。不要编造新闻或链接。`;
-  const result = await askDeepSeek({ question: prompt, model: model || 'deepseek-chat', reasoning: reasoning || 'standard' });
+  const prompt = `你是高中政治时事政治备课助手，要为学生筛选“像高考政治材料题/时政热点”的新闻。\n\n优先主题：经济高质量发展、民营经济与市场、科技创新、乡村振兴与民生、生态文明与双碳、文化自信与传统文化、全过程人民民主与基层治理、依法治国与宪法、党的建设、民族宗教与统一战线、国家安全、中国特色大国外交、人类命运共同体、一带一路、全球治理。\n排除：娱乐八卦、明星绯闻、体育赛事、演唱会影视综艺、普通刑事案件、交通事故、赌博诈骗等与高考政治主干知识关系不大的内容。\n\n可选章节：\n${chapters.map((chapter, index) => `${index + 1}. ${chapter}`).join('\n')}\n\n新闻列表（JSON）：\n${JSON.stringify(compact)}\n\n请严格输出 JSON 数组，不要输出其他文字，按“高考命题相关性”从高到低排序。每项格式：{"index":新闻序号,"chapter":"最对应的章节原文","summary":"不超过90字的新闻要点","examPoint":"可能考查的知识点或设问角度，不超过45字"}。最多45条；只保留与高中政治教材或高考时政热点相关的新闻；不要编造新闻、链接或事实。`;
+  const result = await askDeepSeek({
+    question: prompt,
+    model: model || 'deepseek-chat',
+    reasoning: reasoning || 'standard',
+    maxTokens: 5000
+  });
   if (!result.ok) return { ok: false, error: result.error };
   const parsed = extractAiJson(result.answer);
   if (!Array.isArray(parsed)) return { ok: false, error: 'AI 返回格式无法解析' };
@@ -1601,12 +1655,15 @@ function registerIpc() {
     try {
       const news = await fetchPoliticalNews(days);
       if (!news.length) return { ok: false, error: '暂时没有抓取到最近新闻，请检查网络后重试。' };
+      const targetChapters = chapters.length ? chapters : ['综合'];
+      const ranked = rankPoliticalNews(news, targetChapters);
+      const candidates = (ranked.length >= 8 ? ranked : news).slice(0, 60);
       const keyResult = await readAiKey();
       let aiUsed = false;
       let warning = '';
       let data = [];
       if (keyResult.ok && keyResult.key) {
-        const analyzed = await analyzePoliticalNews(news, chapters.length ? chapters : ['综合'], payload && payload.model, payload && payload.reasoning);
+        const analyzed = await analyzePoliticalNews(candidates, targetChapters, payload && payload.model, payload && payload.reasoning);
         if (analyzed.ok) {
           data = analyzed.data;
           aiUsed = true;
@@ -1614,32 +1671,51 @@ function registerIpc() {
           warning = `AI 章节分析未完成：${analyzed.error}。已使用关键词匹配。`;
         }
       } else {
-        warning = '未在「通用设置」中填写 DeepSeek API Key，当前仅按关键词匹配章节。';
+        warning = '未在「通用设置」中填写 DeepSeek API Key，当前按高考相关性和关键词匹配章节。';
       }
       const selected = new Map();
       data.forEach((entry) => {
         const index = Number(entry && entry.index);
-        const item = news[index];
+        const item = candidates[index];
         if (!item) return;
-        const chapter = normalizeString(entry.chapter, 160) || keywordChapterMatch(item, chapters.length ? chapters : ['综合']);
+        const chapter = normalizeString(entry.chapter, 160) || keywordChapterMatch(item, targetChapters);
         selected.set(index, {
           ...item,
           chapter,
-          summary: normalizeString(entry.summary, 300) || item.description.slice(0, 160)
+          summary: normalizeString(entry.summary, 300) || item.description.slice(0, 160),
+          examPoint: normalizeString(entry.examPoint, 160) || fallbackExamPoint(item, chapter)
         });
       });
       let items = [...selected.values()];
-      if (!items.length) {
-        items = news.slice(0, 24).map((item) => ({
+      // AI 可能只挑出十几条；继续按关键词/章节相关性补足到 50 条，保证材料量。
+      const selectedLinks = new Set(items.map((item) => item.link));
+      for (const item of ranked) {
+        if (items.length >= 50) break;
+        if (selectedLinks.has(item.link)) continue;
+        selectedLinks.add(item.link);
+        const chapter = keywordChapterMatch(item, targetChapters);
+        items.push({
           ...item,
-          chapter: keywordChapterMatch(item, chapters.length ? chapters : ['综合']),
-          summary: item.description.slice(0, 160)
-        }));
-        if (aiUsed) warning = 'AI 没有筛出与所选章节直接相关的新闻，已展示最新权威新闻供参考。';
+          chapter,
+          summary: item.description.slice(0, 160),
+          examPoint: fallbackExamPoint(item, chapter)
+        });
+      }
+      if (!items.length) {
+        items = (ranked.length ? ranked : news).slice(0, 50).map((item) => {
+          const chapter = keywordChapterMatch(item, targetChapters);
+          return {
+            ...item,
+            chapter,
+            summary: item.description.slice(0, 160),
+            examPoint: fallbackExamPoint(item, chapter)
+          };
+        });
+        if (aiUsed) warning = 'AI 没有筛出足够的考题相关新闻，已展示按高考主题和章节相关性排序的权威新闻。';
       }
       return {
         ok: true,
-        items: items.slice(0, 24),
+        items: items.slice(0, 50),
         aiUsed,
         warning,
         fetchedAt: new Date().toISOString(),

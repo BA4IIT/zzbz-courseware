@@ -1256,7 +1256,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.8.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '1.9.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -3621,6 +3621,7 @@
       <div class="politics-news-meta"><span class="politics-source">${esc(item.source || '权威媒体')}</span><span>${esc(formatNewsDate(item.publishedAt))}</span><span class="politics-chapter-tag">${esc(item.chapter || '综合')}</span></div>
       <h3>${esc(item.title)}</h3>
       <p>${esc(item.summary || item.description || '')}</p>
+      ${item.examPoint ? `<div class="politics-exam-point"><span>命题角度</span>${esc(item.examPoint)}</div>` : ''}
       <button type="button" class="politics-link" data-politics-link="${attr(item.link)}">前往新闻 ${icon('external')}</button>
     </article>`).join('');
   }
@@ -5938,7 +5939,7 @@
             <li><strong>通用设置</strong>：统一设置所有 AI 功能的 API Key、默认模型/推理等级和时事政治弹幕。</li>
             <li><strong>单词天天练</strong>：高中英语 3500 词库随机出题，英译汉/汉译英四选一，支持昵称通关排名。</li>
             <li><strong>函数图像 / 科学计算器</strong>：绘制多条函数曲线并缩放、拖动；计算器支持三角函数、对数、幂等。</li>
-            <li><strong>时事政治</strong>：抓取权威媒体 RSS，调用 DeepSeek 按政治教材章节匹配新闻，可打开原文并滚动弹幕。</li>
+            <li><strong>时事政治</strong>：聚合 6 个权威媒体 RSS，按高考命题相关性筛选并最多展示 50 条，标注教材章节和命题角度，可打开原文并滚动弹幕。</li>
             <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址并支持网页缩放；可在右侧加密保存账号密码，登录页自动填充。</li>
             <li><strong>展台 / 白板</strong>：支持 1080P/720P/480P 采集、清晰度增强、旋转/镜像、全屏、缩放、鼠标移动、多色批画和橡皮；全屏时底部工具栏可直接控制。</li>
             <li><strong>科目投票</strong>：每天按日期为 13 个学科投票，查看结果需要管理员密码。</li>
