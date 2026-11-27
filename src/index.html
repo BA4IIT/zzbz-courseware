@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -91,6 +91,10 @@
               <span class="nav-icon" data-icon="graph"></span>
               <span class="nav-text">函数图像</span>
             </button>
+            <button type="button" class="nav-item" data-page="englishexam">
+              <span class="nav-icon" data-icon="bookOpen"></span>
+              <span class="nav-text">英语往年题</span>
+            </button>
             <button type="button" class="nav-item" data-page="calculator">
               <span class="nav-icon" data-icon="calculator"></span>
               <span class="nav-text">科学计算器</span>
@@ -110,6 +114,10 @@
             <button type="button" class="nav-item" data-page="whiteboard">
               <span class="nav-icon" data-icon="presentation"></span>
               <span class="nav-text">白板</span>
+            </button>
+            <button type="button" class="nav-item" data-page="annotation">
+              <span class="nav-icon" data-icon="edit"></span>
+              <span class="nav-text">批注</span>
             </button>
             <button type="button" class="nav-item" data-page="browser">
               <span class="nav-icon" data-icon="globe"></span>
@@ -138,6 +146,10 @@
             <button type="button" class="nav-item" data-page="timer">
               <span class="nav-icon" data-icon="clock"></span>
               <span class="nav-text">计时器</span>
+            </button>
+            <button type="button" class="nav-item" data-page="volume">
+              <span class="nav-icon" data-icon="wifi"></span>
+              <span class="nav-text">环境音量</span>
             </button>
             <button type="button" class="nav-item" data-page="settings">
               <span class="nav-icon" data-icon="settings"></span>
@@ -519,6 +531,51 @@
                   </div>
                   <div class="question-list" id="questionList"></div>
                 </section>
+              </div>
+            </section>
+
+            <!-- 批注 -->
+            <section class="page-panel" id="page-annotation" data-panel="annotation" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> SCREEN ANNOTATION</div>
+                  <h1>批注</h1>
+                  <p>截取当前屏幕作为背景，用画笔直接在画面上圈画、批注；用于讲解网页、文档或任意桌面内容。</p>
+                </div>
+                <div class="annotation-head-actions">
+                  <button type="button" class="btn btn-light" id="annotationCapture"><span data-icon="image"></span>重新截屏</button>
+                  <button type="button" class="btn btn-primary" id="annotationSave"><span data-icon="download"></span>保存批注</button>
+                </div>
+              </div>
+              <div class="annotation-layout">
+                <section class="annotation-card">
+                  <div class="annotation-stage" id="annotationStage">
+                    <img id="annotationBackground" alt="屏幕截图">
+                    <div class="annotation-content" id="annotationContent"><canvas id="annotationCanvas"></canvas></div>
+                    <div class="annotation-empty" id="annotationEmpty"><span data-icon="image"></span><strong>正在截取屏幕…</strong></div>
+                    <button type="button" class="stage-exit-fullscreen" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
+                  </div>
+                  <div class="annotation-toolbar">
+                    <div class="drawing-color-grid">
+                      <button type="button" class="drawing-color is-active" data-draw-color="#e35d5d" style="--swatch:#e35d5d"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2f7fd8" style="--swatch:#2f7fd8"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#2d9d78" style="--swatch:#2d9d78"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#d99a3e" style="--swatch:#d99a3e"></button>
+                      <button type="button" class="drawing-color" data-draw-color="#263b50" style="--swatch:#263b50"></button>
+                    </div>
+                    <button type="button" class="drawing-tool" data-draw-tool="move"><span data-icon="hand"></span>鼠标</button>
+                    <button type="button" class="drawing-tool" data-draw-tool="eraser"><span data-icon="close"></span>橡皮</button>
+                    <button type="button" class="drawing-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
+                    <label class="drawing-width">笔迹粗细 <input type="range" id="annotationPenWidth" min="1" max="18" value="5"></label>
+                    <button type="button" class="btn btn-light" id="annotationFullscreen"><span data-icon="monitor"></span>全屏</button>
+                  </div>
+                </section>
+                <aside class="annotation-side-card">
+                  <span class="panel-kicker">HOW TO USE</span>
+                  <h3>屏幕批注</h3>
+                  <p>先打开要讲解的网页、文档或桌面内容，再回到本页点击「重新截屏」，即可在截图上批注。</p>
+                  <p>批注完成后可保存为 PNG，原屏幕内容不会改变。</p>
+                </aside>
               </div>
             </section>
 
@@ -1079,6 +1136,7 @@
                     <canvas id="graphCanvas"></canvas>
                     <div class="graph-empty" id="graphEmpty"><span data-icon="graph"></span><strong>还没有函数曲线</strong><p>在上方输入表达式，点击「绘制」。</p></div>
                     <div class="graph-error" id="graphError" hidden></div>
+                    <div class="graph-coord-tooltip" id="graphCoordTooltip" hidden></div>
                   </div>
                   <div class="graph-footer">
                     <div class="graph-zoom"><button type="button" id="graphZoomOut">−</button><span id="graphScaleLabel">40 px / 单位</span><button type="button" id="graphZoomIn">＋</button><button type="button" id="graphReset">复位</button></div>
@@ -1123,6 +1181,32 @@
               </div>
             </section>
 
+            <!-- 英语往年题 -->
+            <section class="page-panel" id="page-englishexam" data-panel="englishexam" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> ENGLISH EXAM FINDER</div>
+                  <h1>英语往年题</h1>
+                  <p>按外研版课本、章节和题型，用 DeepSeek 快速整理往年高考/模拟英语题目，并标明题目类型。</p>
+                </div>
+                <div class="englishexam-head-badge"><span data-icon="bookOpen"></span><strong>AI</strong><small>英语题库</small></div>
+              </div>
+              <div class="englishexam-layout">
+                <section class="englishexam-card">
+                  <div class="englishexam-toolbar">
+                    <label class="question-field"><span>课本</span><select id="englishExamBook"></select></label>
+                    <label class="question-field"><span>章节</span><select id="englishExamChapter"></select></label>
+                    <label class="question-field"><span>题目类型</span><select id="englishExamType"><option>阅读理解</option><option>完形填空</option><option>七选五</option><option>语法填空</option><option>应用文写作</option><option>读后续写</option><option>单项选择</option><option>听力理解</option></select></label>
+                    <label class="question-field"><span>题量</span><select id="englishExamCount"><option value="3">3 题</option><option value="5" selected>5 题</option><option value="8">8 题</option></select></label>
+                    <button type="button" class="btn btn-primary" id="englishExamSearch"><span data-icon="sparkles"></span>AI 查找题目</button>
+                  </div>
+                  <div class="englishexam-status" id="englishExamStatus"><span></span>请选择课本、章节和题型；题目由 AI 整理，来源不确定时会标注模拟题。</div>
+                  <div class="englishexam-result" id="englishExamResult"><div class="politics-empty"><span data-icon="bookOpen"></span><strong>等待查找</strong><p>选择分类后点击「AI 查找题目」。</p></div></div>
+                </section>
+                <aside class="englishexam-side-card"><span class="panel-kicker">HOW IT WORKS</span><h3>题目查找</h3><ul><li>按外研版教材的课本和章节定位考点。</li><li>可选择高考常见题型，AI 会标明题目类型。</li><li>AI 会尽量给出年份/来源；无法确认时会标注模拟题，请以原卷为准。</li><li>需要先在通用设置中填写 DeepSeek API Key。</li></ul></aside>
+              </div>
+            </section>
+
             <!-- 时事政治 -->
             <section class="page-panel" id="page-politics" data-panel="politics" hidden>
               <div class="page-heading">
@@ -1155,6 +1239,32 @@
                   </ul>
                   <p class="politics-note" id="politicsWarning"></p>
                 </aside>
+              </div>
+            </section>
+
+            <!-- 环境音量 -->
+            <section class="page-panel" id="page-volume" data-panel="volume" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> CLASSROOM SOUND LEVEL</div>
+                  <h1>环境音量</h1>
+                  <p>用电脑麦克风检测教室环境声级，分为自习课和晨读课两个场景；数值为相对分贝，用于观察安静/朗读状态。</p>
+                </div>
+                <div class="volume-head-badge"><span data-icon="wifi"></span><strong>dB</strong><small>环境声级</small></div>
+              </div>
+              <div class="volume-layout">
+                <section class="volume-card">
+                  <div class="volume-scene-tabs"><button type="button" class="is-active" data-volume-scene="study">自习课</button><button type="button" data-volume-scene="morning">晨读课</button></div>
+                  <div class="volume-dial">
+                    <div class="volume-db"><strong id="volumeDb">--</strong><span>dB</span></div>
+                    <div class="volume-level" id="volumeLevel">等待启动</div>
+                    <div class="volume-meter"><i id="volumeMeterBar"></i><b class="volume-target"></b></div>
+                    <div class="volume-scale"><span>30</span><span>45</span><span>60</span><span>75</span><span>90</span></div>
+                  </div>
+                  <div class="volume-stats"><div><strong id="volumePeak">--</strong><span>峰值 dB</span></div><div><strong id="volumeSceneTip">自习安静</strong><span>建议范围</span></div></div>
+                  <div class="volume-actions"><button type="button" class="btn btn-primary" id="volumeStart"><span data-icon="wifi"></span>开始检测</button><button type="button" class="btn btn-light" id="volumeStop" disabled>停止</button><span id="volumeStatus">麦克风未启动</span></div>
+                </section>
+                <aside class="volume-side-card"><span class="panel-kicker">REFERENCE</span><h3>场景参考</h3><div class="volume-reference"><div><strong>自习课</strong><span>建议 35—50 dB，超过 60 dB 提示偏吵</span></div><div><strong>晨读课</strong><span>建议 55—80 dB，低于 45 dB 提示声音偏小</span></div></div><p>手机/电脑麦克风灵敏度不同，本页显示的是相对声级，适合比较前后变化，不作为专业声级计使用。</p></aside>
               </div>
             </section>
 
@@ -1191,6 +1301,21 @@
                   </div>
                 </aside>
               </div>
+              <section class="settings-card settings-wide">
+                <div class="panel-head"><div><span class="panel-kicker">FEATURES & DESKTOP WIDGET</span><h3>功能显示与桌面悬浮快捷键</h3></div></div>
+                <div class="settings-body">
+                  <div class="settings-feature-grid" id="settingsFeatureGrid"></div>
+                  <div class="settings-widget-block">
+                    <label class="settings-switch"><input type="checkbox" id="settingsWidgetEnabled" checked><span>显示桌面右下角悬浮快捷键</span></label>
+                    <div class="settings-widget-slots">
+                      <label class="question-field"><span>快捷键 1</span><select data-widget-slot="0"></select></label>
+                      <label class="question-field"><span>快捷键 2</span><select data-widget-slot="1"></select></label>
+                      <label class="question-field"><span>快捷键 3</span><select data-widget-slot="2"></select></label>
+                    </div>
+                    <p class="settings-note">悬浮快捷键中间为八中校徽，点击外侧功能键可打开对应功能；关闭上面的开关即可隐藏。</p>
+                  </div>
+                </div>
+              </section>
             </section>
 
             <!-- 数据管理 -->
@@ -1261,7 +1386,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v1.9.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.0.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中集成桌面教学系统</strong><span>课件管理 · 课堂互动 · 教学工具</span></div>
@@ -1288,7 +1413,7 @@
             <i></i>
             <span>关键词提供：桑晨皓、任泽昱</span>
             <i></i>
-            <span>使用 AI：DeepSeek Chat / Reasoner</span>
+            <span>使用 AI：Deepseek-V4.1pro</span>
             <i></i>
             <button type="button" class="statusbar-link" data-open-help>使用说明</button>
             <a class="statusbar-email" href="mailto:ba4iitqrz@163.com" data-email="ba4iitqrz@163.com" title="点击联系开发者">开发者邮箱：ba4iitqrz@163.com</a>

@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage, desktopCapturer } = require('electron');
 const archiver = require('archiver');
 const XLSX = require('xlsx');
 const mammoth = require('mammoth');
@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '2.0.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -670,6 +670,37 @@ function normalizeWordGameScores(raw) {
   }).filter(Boolean);
 }
 
+const FEATURE_KEYS = [
+  'vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics',
+  'camera', 'whiteboard', 'annotation', 'browser', 'timetable', 'usb',
+  'vote', 'students', 'phone', 'timer', 'volume', 'englishexam'
+];
+
+const DEFAULT_WIDGET_ITEMS = [
+  { page: 'whiteboard', label: '白板' },
+  { page: 'camera', label: '展台' },
+  { page: 'annotation', label: '批注' }
+];
+
+function normalizeFeatureSettings(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const result = {};
+  FEATURE_KEYS.forEach((key) => { result[key] = source[key] !== false; });
+  return result;
+}
+
+function normalizeWidgetSettings(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const items = (Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS)
+    .slice(0, 3)
+    .map((item, index) => ({
+      page: normalizeString(item && item.page, 40) || DEFAULT_WIDGET_ITEMS[index].page,
+      label: normalizeString(item && item.label, 12) || DEFAULT_WIDGET_ITEMS[index].label
+    }));
+  while (items.length < 3) items.push(DEFAULT_WIDGET_ITEMS[items.length]);
+  return { enabled: source.enabled !== false, items };
+}
+
 function normalizeLibrary(payload) {
   const rawItems = payload && Array.isArray(payload.items) ? payload.items : [];
   const items = rawItems.map(normalizeItem).filter(Boolean).slice(0, 20000);
@@ -697,7 +728,9 @@ function normalizeLibrary(payload) {
         enabled: rawSettings.danmaku && rawSettings.danmaku.enabled !== false,
         speed: Math.max(20, Math.min(100, Math.floor(Number(rawSettings.danmaku && rawSettings.danmaku.speed) || 45))),
         fontSize: Math.max(12, Math.min(30, Math.floor(Number(rawSettings.danmaku && rawSettings.danmaku.fontSize) || 18)))
-      }
+      },
+      features: normalizeFeatureSettings(rawSettings.features),
+      widget: normalizeWidgetSettings(rawSettings.widget)
     },
     items,
     questions,
@@ -852,6 +885,8 @@ async function askDeepSeek(payload) {
 }
 
 let phoneCast = null;
+let widgetWindow = null;
+let widgetConfig = { enabled: false, items: [] };
 
 function getLanAddress() {
   const candidates = [];
@@ -1002,7 +1037,24 @@ function Await($WinRtTask, $ResultType) {
   $netTask.Wait(-1) | Out-Null
   $netTask.Result
 }
-$bytes = [System.IO.File]::ReadAllBytes($Path)
+Add-Type -AssemblyName System.Drawing
+$sourceImage = [System.Drawing.Bitmap]::FromFile($Path)
+$scale = if ($sourceImage.Width -lt 1600 -or $sourceImage.Height -lt 1000) { 2 } else { 1 }
+$targetWidth = [Math]::Min(4200, [Math]::Max(1, [int]($sourceImage.Width * $scale)))
+$targetHeight = [Math]::Min(4200, [Math]::Max(1, [int]($sourceImage.Height * $scale)))
+$prepared = [System.Drawing.Bitmap]::new($targetWidth, $targetHeight)
+$graphics = [System.Drawing.Graphics]::FromImage($prepared)
+$graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+$graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+$graphics.DrawImage($sourceImage, 0, 0, $targetWidth, $targetHeight)
+$graphics.Dispose()
+$sourceImage.Dispose()
+$memory = [System.IO.MemoryStream]::new()
+$prepared.Save($memory, [System.Drawing.Imaging.ImageFormat]::Png)
+$prepared.Dispose()
+$bytes = $memory.ToArray()
+$memory.Dispose()
 $stream = [Windows.Storage.Streams.InMemoryRandomAccessStream]::new()
 $writer = [Windows.Storage.Streams.DataWriter]::new($stream)
 $writer.WriteBytes($bytes)
@@ -1209,6 +1261,76 @@ async function analyzePoliticalNews(items, chapters, model, reasoning) {
   const parsed = extractAiJson(result.answer);
   if (!Array.isArray(parsed)) return { ok: false, error: 'AI 返回格式无法解析' };
   return { ok: true, data: parsed };
+}
+
+function normalizeWidgetConfig(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const items = (Array.isArray(source.items) ? source.items : [])
+    .slice(0, 3)
+    .map((item) => ({
+      page: normalizeString(item && item.page, 40),
+      label: normalizeString(item && item.label, 12)
+    }))
+    .filter((item) => item.page);
+  return { enabled: Boolean(source.enabled), items };
+}
+
+function createWidgetWindow() {
+  if (widgetWindow && !widgetWindow.isDestroyed()) return widgetWindow;
+  const display = screen.getPrimaryDisplay();
+  const size = 250;
+  widgetWindow = new BrowserWindow({
+    width: size,
+    height: size,
+    x: display.workArea.x + display.workArea.width - size - 18,
+    y: display.workArea.y + display.workArea.height - size - 18,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    show: false,
+    focusable: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'widget-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  widgetWindow.setAlwaysOnTop(true, 'screen-saver');
+  widgetWindow.loadFile(path.join(__dirname, 'src', 'widget.html')).catch(() => {});
+  widgetWindow.on('closed', () => { widgetWindow = null; });
+  return widgetWindow;
+}
+
+function showMainPage(page) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (page) mainWindow.webContents.send('app:navigate', normalizeString(page, 40));
+}
+
+function applyWidgetConfig(raw) {
+  widgetConfig = normalizeWidgetConfig(raw);
+  if (!widgetConfig.enabled || !widgetConfig.items.length) {
+    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
+    return;
+  }
+  const win = createWidgetWindow();
+  const send = () => {
+    if (win && !win.isDestroyed()) win.webContents.send('widget:config', widgetConfig);
+  };
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send);
+  else send();
+  win.showInactive();
 }
 
 function registerIpc() {
@@ -1951,6 +2073,53 @@ function registerIpc() {
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('widget:configure', async (_event, config) => {
+    applyWidgetConfig(config);
+    return { ok: true };
+  });
+  ipcMain.on('widget:action', (_event, page) => {
+    const valid = normalizeString(page, 40);
+    if (valid) showMainPage(valid);
+  });
+  ipcMain.on('widget:hide', () => {
+    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
+  });
+  ipcMain.handle('screen:capture', async (_event, options) => {
+    const hideWindow = Boolean(options && options.hideWindow);
+    let hidden = false;
+    let widgetHidden = false;
+    try {
+      if (hideWindow && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.hide();
+        hidden = true;
+        if (widgetWindow && !widgetWindow.isDestroyed() && widgetWindow.isVisible()) {
+          widgetWindow.hide();
+          widgetHidden = true;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      }
+      const display = screen.getPrimaryDisplay();
+      const width = Math.min(3840, Math.max(1280, display.size.width));
+      const height = Math.round(width * display.size.height / Math.max(1, display.size.width));
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width, height }
+      });
+      if (!sources.length) return { ok: false, error: '没有找到可截取的屏幕。' };
+      return { ok: true, dataUrl: sources[0].thumbnail.toDataURL() };
+    } catch (error) {
+      return { ok: false, error: `屏幕截取失败：${error.message}` };
+    } finally {
+      if (hidden && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+      if (widgetHidden && widgetWindow && !widgetWindow.isDestroyed() && widgetConfig.enabled) {
+        widgetWindow.showInactive();
+      }
     }
   });
 

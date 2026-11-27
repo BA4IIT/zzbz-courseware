@@ -58,6 +58,16 @@ contextBridge.exposeInMainWorld('zzbz', {
     return () => ipcRenderer.removeListener('update:progress', handler);
   },
   searchPolitics: (payload) => ipcRenderer.invoke('politics:search', payload),
+  captureScreen: (options) => ipcRenderer.invoke('screen:capture', options),
+  widget: {
+    configure: (config) => ipcRenderer.invoke('widget:configure', config),
+    hide: () => ipcRenderer.send('widget:hide')
+  },
+  onNavigate: (callback) => {
+    const handler = (_event, page) => callback(page);
+    ipcRenderer.on('app:navigate', handler);
+    return () => ipcRenderer.removeListener('app:navigate', handler);
+  },
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
   downloadUpdate: (payload) => ipcRenderer.invoke('app:download-update', payload),
   launchInstaller: (filePath) => ipcRenderer.invoke('app:launch-installer', filePath),

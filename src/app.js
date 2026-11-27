@@ -184,6 +184,9 @@
     graph: '函数图像',
     calculator: '科学计算器',
     politics: '时事政治',
+    volume: '环境音量',
+    englishexam: '英语往年题',
+    annotation: '批注',
     settings: '通用设置',
     vote: '科目投票',
     students: '随机点名',
@@ -196,7 +199,7 @@
     usb: 'U 盘检测',
     data: '数据管理'
   };
-  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics', 'browser', 'camera', 'whiteboard', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer', 'settings']);
+  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics', 'volume', 'englishexam', 'browser', 'camera', 'whiteboard', 'annotation', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer', 'settings']);
   const ADMIN_PASSWORD = '6767';
   const VOTE_EXTRA_SUBJECTS = [
     { id: 'music', name: '音乐', short: '音', color: '#c56f9e' },
@@ -469,12 +472,15 @@
       initialized: false,
       dragging: false,
       lastX: 0,
-      lastY: 0
+      lastY: 0,
+      hover: null
     },
     whiteboardPages: [''],
     whiteboardPageIndex: 0,
     calc: { expression: '', result: '', angleMode: 'rad', history: [] },
     politics: { bookId: '', chapter: '', days: 7, loading: false, items: [], warning: '', aiUsed: false, rangeFrom: '', rangeTo: '' },
+    volume: { stream: null, context: null, analyser: null, timer: 0, running: false, db: 0, peak: 0, scene: 'study' },
+    englishExam: { bookId: '', chapter: '', type: '阅读理解', count: 5, loading: false, result: '' },
     timer: { total: 300, remaining: 300, running: false, endAt: 0, interval: 0, lastBeep: 0 },
     updateChecking: false,
     updateDownloading: false,
@@ -1256,7 +1262,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '1.9.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.0.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1670,6 +1676,90 @@
     };
   }
 
+  const FEATURE_PAGES = [
+    { key: 'vocab', label: '英语 3500' },
+    { key: 'questions', label: '学科提问' },
+    { key: 'ai', label: 'AI 解答' },
+    { key: 'wordgame', label: '单词天天练' },
+    { key: 'graph', label: '函数图像' },
+    { key: 'calculator', label: '科学计算器' },
+    { key: 'politics', label: '时事政治' },
+    { key: 'camera', label: '展台' },
+    { key: 'whiteboard', label: '白板' },
+    { key: 'annotation', label: '批注' },
+    { key: 'browser', label: '内置浏览器' },
+    { key: 'timetable', label: '课程表' },
+    { key: 'usb', label: 'U 盘检测' },
+    { key: 'vote', label: '科目投票' },
+    { key: 'students', label: '随机点名' },
+    { key: 'phone', label: '手机投屏' },
+    { key: 'timer', label: '计时器' },
+    { key: 'volume', label: '环境音量' },
+    { key: 'englishexam', label: '英语往年题' }
+  ];
+
+  const DEFAULT_WIDGET_ITEMS = [
+    { page: 'whiteboard', label: '白板' },
+    { page: 'camera', label: '展台' },
+    { page: 'annotation', label: '批注' }
+  ];
+
+  function normalizeFeatureSettings(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const result = {};
+    FEATURE_PAGES.forEach((item) => { result[item.key] = source[item.key] !== false; });
+    return result;
+  }
+
+  function normalizeWidgetSettings(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const items = (Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS)
+      .slice(0, 3)
+      .map((item, index) => ({
+        page: String(item && item.page || DEFAULT_WIDGET_ITEMS[index].page),
+        label: String(item && item.label || DEFAULT_WIDGET_ITEMS[index].label).slice(0, 12)
+      }));
+    while (items.length < 3) items.push(DEFAULT_WIDGET_ITEMS[items.length]);
+    return { enabled: source.enabled !== false, items };
+  }
+
+  function featureSettings() {
+    state.settings.features = normalizeFeatureSettings(state.settings.features);
+    return state.settings.features;
+  }
+
+  function widgetSettings() {
+    state.settings.widget = normalizeWidgetSettings(state.settings.widget);
+    return state.settings.widget;
+  }
+
+  function pageLabel(page) {
+    return FEATURE_PAGES.find((item) => item.key === page)?.label
+      || PAGE_TITLES[page]
+      || page;
+  }
+
+  function applyFeatureVisibility() {
+    const features = featureSettings();
+    $$('[data-page]').forEach((button) => {
+      button.hidden = features[button.dataset.page] === false;
+    });
+    if (features[state.page] === false) setPage('library');
+  }
+
+  async function applyWidgetSettings() {
+    if (!api.widget) return;
+    const widget = widgetSettings();
+    const items = widget.items
+      .filter((item) => featuresAllows(item.page))
+      .map((item) => ({ page: item.page, label: item.label || pageLabel(item.page) }));
+    await api.widget.configure({ enabled: widget.enabled && items.length > 0, items }).catch(() => {});
+  }
+
+  function featuresAllows(page) {
+    return featureSettings()[page] !== false;
+  }
+
   function aiSettings() {
     state.settings.ai = normalizeAiSettings(state.settings.ai);
     return state.settings.ai;
@@ -1764,12 +1854,20 @@
     camera: {
       name: 'camera', canvasId: 'cameraCanvas', contentId: 'cameraContent', stageId: 'cameraStage',
       color: '#e35d5d', width: 4, eraser: false, tool: 'pen', drawing: false, last: null,
-      zoom: 1, panX: 0, panY: 0, panning: false, panStart: null, panOrigin: null, initialized: false
+      zoom: 1, panX: 0, panY: 0, panning: false, panStart: null, panOrigin: null,
+      pointers: new Map(), pinching: false, pinchStartDistance: 0, pinchStartZoom: 1, initialized: false
     },
     whiteboard: {
       name: 'whiteboard', canvasId: 'whiteboardCanvas', contentId: 'whiteboardContent', stageId: 'whiteboardStage',
       color: '#263b50', width: 5, eraser: false, tool: 'pen', drawing: false, last: null,
-      zoom: 1, panX: 0, panY: 0, panning: false, panStart: null, panOrigin: null, initialized: false
+      zoom: 1, panX: 0, panY: 0, panning: false, panStart: null, panOrigin: null,
+      pointers: new Map(), pinching: false, pinchStartDistance: 0, pinchStartZoom: 1, initialized: false
+    },
+    annotation: {
+      name: 'annotation', canvasId: 'annotationCanvas', contentId: 'annotationContent', stageId: 'annotationStage',
+      color: '#e35d5d', width: 5, eraser: false, tool: 'pen', drawing: false, last: null,
+      zoom: 1, panX: 0, panY: 0, panning: false, panStart: null, panOrigin: null,
+      pointers: new Map(), pinching: false, pinchStartDistance: 0, pinchStartZoom: 1, initialized: false
     }
   };
 
@@ -1798,7 +1896,7 @@
     board.tool = active ? 'move' : 'pen';
     board.eraser = false;
     board.panning = false;
-    const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
+    const scope = drawingScope();
     $$('[data-draw-tool="move"]', $(scope)).forEach((button) => button.classList.toggle('is-active', active));
     $$('[data-draw-tool="eraser"]', $(scope)).forEach((button) => button.classList.remove('is-active'));
     $$('.drawing-color', $(scope)).forEach((button) => button.classList.toggle('is-active', !active && button.dataset.drawColor === board.color));
@@ -1808,13 +1906,26 @@
   }
 
   function activeDrawingState() {
-    return state.page === 'whiteboard' ? drawingState.whiteboard : drawingState.camera;
+    if (state.page === 'whiteboard') return drawingState.whiteboard;
+    if (state.page === 'annotation') return drawingState.annotation;
+    return drawingState.camera;
+  }
+
+  function drawingScope() {
+    if (state.page === 'whiteboard') return '#page-whiteboard';
+    if (state.page === 'annotation') return '#page-annotation';
+    return '#page-camera';
+  }
+
+  const DRAW_SUPERSAMPLE = 3;
+  function drawingScale() {
+    return (window.devicePixelRatio || 1) * DRAW_SUPERSAMPLE;
   }
 
   function resizeDrawingCanvas(board) {
     const canvas = document.getElementById(board.canvasId);
     if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = drawingScale();
     const width = Math.max(1, Math.round((canvas.clientWidth || 1) * dpr));
     const height = Math.max(1, Math.round((canvas.clientHeight || 1) * dpr));
     if (canvas.width === width && canvas.height === height) return;
@@ -1861,13 +1972,24 @@
     requestAnimationFrame(resize);
     if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
     window.addEventListener('resize', resize);
+    const pointerDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     canvas.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       if (board.tool === 'move') {
-        board.panning = true;
-        board.panStart = { x: event.clientX, y: event.clientY };
-        board.panOrigin = { x: board.panX, y: board.panY };
-        document.getElementById(board.stageId)?.classList.add('is-panning');
+        board.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (board.pointers.size === 2) {
+          const pointers = [...board.pointers.values()];
+          board.pinching = true;
+          board.panning = false;
+          board.pinchStartDistance = Math.max(1, pointerDistance(pointers[0], pointers[1]));
+          board.pinchStartZoom = board.zoom;
+          document.getElementById(board.stageId)?.classList.remove('is-panning');
+        } else if (board.pointers.size === 1) {
+          board.panning = true;
+          board.panStart = { x: event.clientX, y: event.clientY };
+          board.panOrigin = { x: board.panX, y: board.panY };
+          document.getElementById(board.stageId)?.classList.add('is-panning');
+        }
         try {
           canvas.setPointerCapture?.(event.pointerId);
         } catch (error) {
@@ -1887,6 +2009,17 @@
       event.preventDefault();
     });
     canvas.addEventListener('pointermove', (event) => {
+      if (board.pointers.has(event.pointerId)) {
+        board.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
+      if (board.pinching && board.pointers.size >= 2) {
+        const pointers = [...board.pointers.values()].slice(0, 2);
+        const distance = Math.max(1, pointerDistance(pointers[0], pointers[1]));
+        board.zoom = Math.max(0.5, Math.min(3, board.pinchStartZoom * (distance / board.pinchStartDistance)));
+        applyBoardTransform(board);
+        event.preventDefault();
+        return;
+      }
       if (board.panning) {
         board.panX = board.panOrigin.x + (event.clientX - board.panStart.x);
         board.panY = board.panOrigin.y + (event.clientY - board.panStart.y);
@@ -1901,6 +2034,14 @@
       event.preventDefault();
     });
     const end = (event) => {
+      board.pointers.delete(event.pointerId);
+      if (board.pointers.size < 2 && board.pinching) {
+        board.pinching = false;
+        board.pinchStartDistance = 0;
+        board.pinchStartZoom = board.zoom;
+        event.preventDefault();
+        return;
+      }
       if (board.panning) {
         board.panning = false;
         board.panStart = null;
@@ -1937,12 +2078,14 @@
     const canvas = document.getElementById(board.canvasId);
     if (!canvas) return null;
     const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
+    const scale = drawingScale();
+    const zoom = Math.max(0.5, Number(board.zoom) || 1);
     ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = board.width;
+    // 画布分辨率固定按 3 倍超采样保存；按当前缩放反算线宽，放大后仍然清晰。
+    ctx.lineWidth = board.width / zoom;
     ctx.globalCompositeOperation = board.eraser ? 'destination-out' : 'source-over';
     ctx.strokeStyle = board.color;
     ctx.fillStyle = board.color;
@@ -1952,8 +2095,10 @@
   function drawDot(board, point) {
     const ctx = drawingContext(board);
     if (!ctx) return;
+    const scale = drawingScale();
+    const zoom = Math.max(0.5, Number(board.zoom) || 1);
     ctx.beginPath();
-    ctx.arc(point.x / (window.devicePixelRatio || 1), point.y / (window.devicePixelRatio || 1), board.width / 2, 0, Math.PI * 2);
+    ctx.arc(point.x / scale, point.y / scale, board.width / 2 / zoom, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1961,10 +2106,10 @@
   function drawStroke(board, from, to) {
     const ctx = drawingContext(board);
     if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
+    const scale = drawingScale();
     ctx.beginPath();
-    ctx.moveTo(from.x / dpr, from.y / dpr);
-    ctx.lineTo(to.x / dpr, to.y / dpr);
+    ctx.moveTo(from.x / scale, from.y / scale);
+    ctx.lineTo(to.x / scale, to.y / scale);
     ctx.stroke();
     ctx.restore();
   }
@@ -1974,7 +2119,7 @@
     board.eraser = false;
     board.tool = 'pen';
     board.color = color;
-    const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
+    const scope = drawingScope();
     $$('.drawing-color', $(scope)).forEach((button) => {
       button.classList.toggle('is-active', button.dataset.drawColor === color);
     });
@@ -1986,7 +2131,7 @@
     const board = activeDrawingState();
     board.eraser = active;
     board.tool = active ? 'eraser' : 'pen';
-    const scope = state.page === 'whiteboard' ? '#page-whiteboard' : '#page-camera';
+    const scope = drawingScope();
     $$('[data-draw-tool="eraser"]', $(scope)).forEach((button) => button.classList.toggle('is-active', active));
     $$('[data-draw-tool="move"]', $(scope)).forEach((button) => button.classList.remove('is-active'));
     document.getElementById(board.stageId)?.classList.remove('is-move-tool');
@@ -2031,9 +2176,16 @@
       ? Math.min(rect.width / Math.max(1, rect.height), rect.height / Math.max(1, rect.width))
       : 1;
     const mirror = state.cameraMirrorX ? -1 : 1;
-    video.style.transform = rotate === 0 && !state.cameraMirrorX && fitScale === 1
+    const transform = rotate === 0 && !state.cameraMirrorX && fitScale === 1
       ? 'none'
       : `rotate(${rotate}deg) scale(${fitScale.toFixed(4)}) scaleX(${mirror})`;
+    video.style.transform = transform;
+    const freeze = $('#cameraFreeze');
+    if (freeze) {
+      freeze.style.filter = video.style.filter;
+      freeze.style.transform = transform;
+      freeze.style.transformOrigin = 'center center';
+    }
     $$('[data-camera-mirror="x"]').forEach((button) => button.classList.toggle('is-active', Boolean(state.cameraMirrorX)));
     const clarityValue = $('#cameraClarityValue');
     if (clarityValue) clarityValue.textContent = `${state.cameraClarity || 100}%`;
@@ -2086,11 +2238,12 @@
       snapshot.height = video.videoHeight;
       snapshot.getContext('2d').drawImage(video, 0, 0, snapshot.width, snapshot.height);
       if (freeze) {
-        freeze.src = snapshot.toDataURL('image/jpeg', 0.92);
+        freeze.src = snapshot.toDataURL('image/png');
         freeze.hidden = false;
       }
       video.pause();
       state.cameraLocked = true;
+      applyCameraEnhancements();
       showToast('展台画面已锁定，可继续批画或拍照。', { type: 'success' });
     } else {
       if (freeze) {
@@ -2383,6 +2536,69 @@
     updateWhiteboardPageLabels();
   }
 
+  async function captureAnnotationScreen() {
+    const empty = $('#annotationEmpty');
+    const image = $('#annotationBackground');
+    if (empty) {
+      empty.hidden = false;
+      empty.innerHTML = `<span>${icon('image')}</span><strong>正在截取屏幕…</strong>`;
+    }
+    const result = await api.captureScreen({ hideWindow: true });
+    if (!result || !result.ok) {
+      if (empty) {
+        empty.hidden = false;
+        empty.innerHTML = `<span>${icon('alert')}</span><strong>截屏失败</strong><p>${esc((result && result.error) || '请重试')}</p>`;
+      }
+      showToast((result && result.error) || '屏幕截取失败', { type: 'error' });
+      return;
+    }
+    if (image) {
+      image.src = result.dataUrl;
+      image.hidden = false;
+    }
+    const board = drawingState.annotation;
+    initDrawingBoard(board);
+    requestAnimationFrame(() => {
+      resizeDrawingCanvas(board);
+      clearDrawing(board);
+      if (empty) empty.hidden = true;
+    });
+  }
+
+  function renderAnnotation() {
+    initDrawingBoard(drawingState.annotation);
+    requestAnimationFrame(() => resizeDrawingCanvas(drawingState.annotation));
+    captureAnnotationScreen();
+  }
+
+  async function saveAnnotationImage() {
+    const canvas = $('#annotationCanvas');
+    const background = $('#annotationBackground');
+    if (!canvas) return;
+    const output = document.createElement('canvas');
+    const width = background?.naturalWidth || canvas.width;
+    const height = background?.naturalHeight || canvas.height;
+    output.width = Math.max(1, width);
+    output.height = Math.max(1, height);
+    const context = output.getContext('2d');
+    if (background && background.src) {
+      try { context.drawImage(background, 0, 0, output.width, output.height); } catch (error) { /* ignore */ }
+    } else {
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, output.width, output.height);
+    }
+    context.drawImage(canvas, 0, 0, output.width, output.height);
+    const result = await api.savePng({
+      dataUrl: output.toDataURL('image/png'),
+      defaultName: `屏幕批注_${todayStamp()}.png`
+    });
+    if (result && result.ok && !result.canceled) {
+      showToast(`批注已保存：${result.filePath}`, { type: 'success', title: '保存成功' });
+    } else if (result && !result.canceled) {
+      showToast(result.error || '保存批注失败', { type: 'error' });
+    }
+  }
+
   async function saveWhiteboardImage() {
     const canvas = $('#whiteboardCanvas');
     if (!canvas) return;
@@ -2571,12 +2787,14 @@
       hideLoading();
       syncAddress();
       setBrowserZoom(state.browserZoom);
+      installBrowserSwipe(webview);
       fillBrowserCredentials(false);
       window.setTimeout(() => fillBrowserCredentials(false), 1400);
     });
     webview.addEventListener('did-finish-load', () => {
       hideLoading();
       syncAddress();
+      installBrowserSwipe(webview);
     });
     webview.addEventListener('did-stop-loading', () => {
       hideLoading();
@@ -2610,6 +2828,40 @@
     } catch (error) {
       showToast('浏览器操作失败', { type: 'error' });
     }
+  }
+
+  function installBrowserSwipe(webview) {
+    if (!webview) return;
+    const script = `(() => {
+      if (window.__zzbzSwipeBound) return true;
+      window.__zzbzSwipeBound = true;
+      let start = null;
+      let lastNav = 0;
+      const editable = (target) => target && (target.closest('input, textarea, select, [contenteditable="true"]'));
+      document.addEventListener('touchstart', (event) => {
+        if (event.touches.length !== 1 || editable(event.target)) { start = null; return; }
+        start = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+      }, { capture: true, passive: true });
+      document.addEventListener('touchend', (event) => {
+        if (!start || !event.changedTouches.length || Date.now() - lastNav < 700) return;
+        const dx = event.changedTouches[0].clientX - start.x;
+        const dy = event.changedTouches[0].clientY - start.y;
+        start = null;
+        if (Math.abs(dx) < 70 || Math.abs(dy) > 55) return;
+        lastNav = Date.now();
+        if (dx > 0 && history.length > 1) history.back();
+        else if (dx < 0) history.forward();
+      }, { capture: true, passive: true });
+      document.addEventListener('wheel', (event) => {
+        if (Date.now() - lastNav < 700 || editable(event.target)) return;
+        if (Math.abs(event.deltaX) < 40 || Math.abs(event.deltaX) < Math.abs(event.deltaY) * 1.4) return;
+        lastNav = Date.now();
+        if (event.deltaX > 0) { if (history.length > 1) history.back(); }
+        else history.forward();
+      }, { capture: true, passive: true });
+      return true;
+    })()`;
+    webview.executeJavaScript(script, true).catch(() => {});
   }
 
   function setBrowserZoom(value) {
@@ -3011,6 +3263,18 @@
     const whiteboardSave = $('#whiteboardSave');
     if (whiteboardSave) whiteboardSave.addEventListener('click', saveWhiteboardImage);
     $$('[data-whiteboard-page]').forEach((button) => button.addEventListener('click', () => switchWhiteboardPage(button.dataset.whiteboardPage)));
+    $$('#annotationCapture').forEach((button) => button.addEventListener('click', captureAnnotationScreen));
+    $$('#annotationSave').forEach((button) => button.addEventListener('click', saveAnnotationImage));
+    const annotationFullscreen = $('#annotationFullscreen');
+    if (annotationFullscreen) annotationFullscreen.addEventListener('click', () => {
+      const stage = $('#annotationStage');
+      if (stage && !document.fullscreenElement) stage.requestFullscreen?.().catch(() => {});
+      else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    });
+    const annotationPenWidth = $('#annotationPenWidth');
+    if (annotationPenWidth) annotationPenWidth.addEventListener('input', () => {
+      drawingState.annotation.width = Number(annotationPenWidth.value) || 5;
+    });
 
     $$('[data-zoom-action]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -3100,6 +3364,36 @@
     const politicsSearchButton = $('#politicsSearchButton');
     if (politicsSearchButton) politicsSearchButton.addEventListener('click', searchPolitics);
 
+    const volumeStart = $('#volumeStart');
+    if (volumeStart) volumeStart.addEventListener('click', startVolume);
+    const volumeStop = $('#volumeStop');
+    if (volumeStop) volumeStop.addEventListener('click', stopVolume);
+    $$('[data-volume-scene]').forEach((button) => button.addEventListener('click', () => {
+      state.volume.scene = button.dataset.volumeScene === 'morning' ? 'morning' : 'study';
+      state.volume.peak = state.volume.running ? state.volume.db : 0;
+      renderVolume();
+    }));
+
+    const englishExamBook = $('#englishExamBook');
+    if (englishExamBook) englishExamBook.addEventListener('change', () => {
+      state.englishExam.bookId = englishExamBook.value;
+      state.englishExam.chapter = '';
+      renderEnglishExam();
+    });
+    const englishExamChapter = $('#englishExamChapter');
+    if (englishExamChapter) englishExamChapter.addEventListener('change', () => {
+      state.englishExam.chapter = englishExamChapter.value;
+    });
+    ['#englishExamType', '#englishExamCount'].forEach((selector) => {
+      const select = $(selector);
+      if (select) select.addEventListener('change', () => {
+        state.englishExam.type = $('#englishExamType')?.value || '阅读理解';
+        state.englishExam.count = Number($('#englishExamCount')?.value) || 5;
+      });
+    });
+    const englishExamSearch = $('#englishExamSearch');
+    if (englishExamSearch) englishExamSearch.addEventListener('click', searchEnglishExam);
+
     const settingsSaveKey = $('#settingsSaveKey');
     if (settingsSaveKey) settingsSaveKey.addEventListener('click', saveSettingsKey);
     const settingsClearKey = $('#settingsClearKey');
@@ -3159,11 +3453,52 @@
         graphCanvas.setPointerCapture?.(event.pointerId);
       });
       graphCanvas.addEventListener('pointermove', (event) => {
-        if (!state.graph.dragging) return;
-        state.graph.originX += event.clientX - state.graph.lastX;
-        state.graph.originY += event.clientY - state.graph.lastY;
-        state.graph.lastX = event.clientX;
-        state.graph.lastY = event.clientY;
+        if (state.graph.dragging) {
+          state.graph.originX += event.clientX - state.graph.lastX;
+          state.graph.originY += event.clientY - state.graph.lastY;
+          state.graph.lastX = event.clientX;
+          state.graph.lastY = event.clientY;
+          drawGraph();
+          return;
+        }
+        const rect = graphCanvas.getBoundingClientRect();
+        const mx = event.clientX - rect.left;
+        const my = event.clientY - rect.top;
+        const worldX = (mx - state.graph.originX) / state.graph.scale;
+        let nearest = null;
+        state.graph.functions.forEach((fn) => {
+          if (!fn.visible) return;
+          let y;
+          try { y = evaluateMath(fn.expression, { x: worldX }); } catch (error) { y = NaN; }
+          if (!Number.isFinite(y)) return;
+          const py = state.graph.originY - y * state.graph.scale;
+          const distance = Math.abs(py - my);
+          if (distance <= 28 && (!nearest || distance < nearest.distance)) {
+            nearest = { fn, y, px: mx, py, distance, color: fn.color };
+          }
+        });
+        const tooltip = $('#graphCoordTooltip');
+        if (!nearest) {
+          state.graph.hover = null;
+          if (tooltip) {
+            const worldY = (state.graph.originY - my) / state.graph.scale;
+            tooltip.textContent = `(${Number(worldX.toFixed(4))}, ${Number(worldY.toFixed(4))})`;
+            tooltip.style.left = `${Math.max(8, Math.min(mx + 14, rect.width - 230))}px`;
+            tooltip.style.top = `${Math.max(8, my - 38)}px`;
+            tooltip.hidden = false;
+          }
+          drawGraph();
+          return;
+        }
+        state.graph.hover = { px: nearest.px, py: nearest.py, color: nearest.color };
+        if (tooltip) {
+          const xText = Number(worldX.toFixed(4)).toString();
+          const yText = Number(nearest.y.toFixed(6)).toString();
+          tooltip.textContent = `(${xText}, ${yText})  y = ${nearest.fn.expression}`;
+          tooltip.style.left = `${Math.max(8, Math.min(nearest.px + 14, rect.width - 230))}px`;
+          tooltip.style.top = `${Math.max(8, nearest.py - 38)}px`;
+          tooltip.hidden = false;
+        }
         drawGraph();
       });
       const endGraphDrag = (event) => {
@@ -3172,6 +3507,13 @@
       };
       graphCanvas.addEventListener('pointerup', endGraphDrag);
       graphCanvas.addEventListener('pointercancel', endGraphDrag);
+      graphCanvas.addEventListener('pointerleave', () => {
+        if (state.graph.dragging) return;
+        state.graph.hover = null;
+        const tooltip = $('#graphCoordTooltip');
+        if (tooltip) tooltip.hidden = true;
+        drawGraph();
+      });
       window.addEventListener('resize', () => { if (state.page === 'graph') drawGraph(); });
       $('#graphZoomIn')?.addEventListener('click', () => zoomAt(1.25));
       $('#graphZoomOut')?.addEventListener('click', () => zoomAt(0.8));
@@ -3417,6 +3759,16 @@
       }
       context.stroke();
     });
+    if (state.graph.hover && Number.isFinite(state.graph.hover.px) && Number.isFinite(state.graph.hover.py)) {
+      const hover = state.graph.hover;
+      context.beginPath();
+      context.arc(hover.px, hover.py, 4.2, 0, Math.PI * 2);
+      context.fillStyle = '#ffffff';
+      context.fill();
+      context.lineWidth = 2;
+      context.strokeStyle = hover.color || '#2f7fd8';
+      context.stroke();
+    }
     const empty = $('#graphEmpty');
     if (empty) empty.hidden = state.graph.functions.length > 0;
     const scaleLabel = $('#graphScaleLabel');
@@ -3563,6 +3915,177 @@
     renderCalcHistory();
   }
 
+  /* ---------------- 环境音量 ---------------- */
+
+  function volumeScene() {
+    return {
+      study: { label: '自习课', min: 35, max: 50, tooQuiet: 30, tooLoud: 60, tip: '自习安静' },
+      morning: { label: '晨读课', min: 55, max: 80, tooQuiet: 45, tooLoud: 88, tip: '晨读洪亮' }
+    }[state.volume.scene] || { label: '自习课', min: 35, max: 50, tooQuiet: 30, tooLoud: 60, tip: '自习安静' };
+  }
+
+  function volumeLevelText(db) {
+    const scene = volumeScene();
+    if (!state.volume.running) return '等待启动';
+    if (db < scene.tooQuiet) return '偏安静';
+    if (db > scene.tooLoud) return '偏吵';
+    if (db >= scene.min && db <= scene.max) return '状态合适';
+    return db < scene.min ? '略微安静' : '略微偏响';
+  }
+
+  function renderVolume() {
+    const scene = volumeScene();
+    const dbNode = $('#volumeDb');
+    const peakNode = $('#volumePeak');
+    const levelNode = $('#volumeLevel');
+    const meter = $('#volumeMeterBar');
+    const tip = $('#volumeSceneTip');
+    const status = $('#volumeStatus');
+    if (dbNode) dbNode.textContent = state.volume.running ? String(Math.round(state.volume.db)) : '--';
+    if (peakNode) peakNode.textContent = state.volume.running ? String(Math.round(state.volume.peak)) : '--';
+    if (levelNode) {
+      levelNode.textContent = volumeLevelText(state.volume.db);
+      levelNode.className = `volume-level${state.volume.running ? (state.volume.db > scene.tooLoud ? ' is-loud' : state.volume.db < scene.tooQuiet ? ' is-quiet' : ' is-ok') : ''}`;
+    }
+    if (meter) meter.style.width = state.volume.running ? `${Math.max(0, Math.min(100, ((state.volume.db - 30) / 60) * 100))}%` : '0%';
+    if (tip) tip.textContent = scene.tip;
+    if (status) status.textContent = state.volume.running ? `麦克风检测中 · ${scene.label}` : '麦克风未启动';
+    const start = $('#volumeStart');
+    const stop = $('#volumeStop');
+    if (start) start.innerHTML = `${icon('wifi')}${state.volume.running ? '重新检测' : '开始检测'}`;
+    if (stop) stop.disabled = !state.volume.running;
+    $$('[data-volume-scene]').forEach((button) => button.classList.toggle('is-active', button.dataset.volumeScene === state.volume.scene));
+  }
+
+  async function stopVolume() {
+    if (state.volume.timer) window.clearInterval(state.volume.timer);
+    state.volume.timer = 0;
+    state.volume.running = false;
+    if (state.volume.stream) state.volume.stream.getTracks().forEach((track) => track.stop());
+    state.volume.stream = null;
+    if (state.volume.context) await state.volume.context.close().catch(() => {});
+    state.volume.context = null;
+    state.volume.analyser = null;
+    renderVolume();
+  }
+
+  async function startVolume() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showToast('当前浏览器不支持麦克风检测。', { type: 'error' });
+      return;
+    }
+    await stopVolume();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const context = new AudioCtx();
+      await context.resume().catch(() => {});
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.72;
+      context.createMediaStreamSource(stream).connect(analyser);
+      state.volume.stream = stream;
+      state.volume.context = context;
+      state.volume.analyser = analyser;
+      state.volume.running = true;
+      state.volume.peak = 0;
+      const samples = new Float32Array(analyser.fftSize);
+      const update = () => {
+        if (!state.volume.running || !state.volume.analyser) return;
+        state.volume.analyser.getFloatTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) sum += sample * sample;
+        const rms = Math.sqrt(sum / samples.length);
+        const rawDb = 20 * Math.log10(Math.max(rms, 0.0000001)) + 100;
+        const db = Math.max(30, Math.min(110, rawDb));
+        state.volume.db = state.volume.db ? state.volume.db * 0.55 + db * 0.45 : db;
+        state.volume.peak = Math.max(state.volume.peak, db);
+        renderVolume();
+      };
+      state.volume.timer = window.setInterval(update, 160);
+      update();
+      showToast('麦克风已启动，开始检测环境音量。', { type: 'success' });
+    } catch (error) {
+      await stopVolume();
+      showToast(`无法启动麦克风：${error.message}`, { type: 'error' });
+    }
+  }
+
+  /* ---------------- 英语往年题 ---------------- */
+
+  function englishBooks() {
+    return DATA.catalog.find((subject) => subject.id === 'english')?.books || [];
+  }
+
+  function renderEnglishExam() {
+    const books = englishBooks();
+    const bookSelect = $('#englishExamBook');
+    const chapterSelect = $('#englishExamChapter');
+    if (!bookSelect || !chapterSelect) return;
+    if (!state.englishExam.bookId && books[0]) state.englishExam.bookId = books[0].id;
+    bookSelect.innerHTML = books.map((book) => `<option value="${attr(book.id)}"${state.englishExam.bookId === book.id ? ' selected' : ''}>${esc(book.name)}</option>`).join('');
+    const book = books.find((entry) => entry.id === state.englishExam.bookId) || books[0];
+    if (book) {
+      if (!state.englishExam.chapter) state.englishExam.chapter = book.chapters[0]?.name || '';
+      chapterSelect.innerHTML = book.chapters.map((chapter) => {
+        const name = typeof chapter === 'string' ? chapter : chapter.name;
+        return `<option value="${attr(name)}"${state.englishExam.chapter === name ? ' selected' : ''}>${esc(name)}</option>`;
+      }).join('');
+    }
+    const type = $('#englishExamType');
+    if (type) type.value = state.englishExam.type;
+    const count = $('#englishExamCount');
+    if (count) count.value = String(state.englishExam.count);
+    const result = $('#englishExamResult');
+    if (result) {
+      if (state.englishExam.result) {
+        result.textContent = state.englishExam.result;
+        result.classList.add('has-content');
+      } else if (!state.englishExam.loading) {
+        result.innerHTML = `<div class="politics-empty"><span>${icon('bookOpen')}</span><strong>等待查找</strong><p>选择分类后点击「AI 查找题目」。</p></div>`;
+        result.classList.remove('has-content');
+      }
+    }
+    const status = $('#englishExamStatus');
+    if (status && !state.englishExam.loading) status.innerHTML = `<span></span>已选择 ${esc(book?.name || '')} · ${esc(state.englishExam.chapter || '')} · ${esc(state.englishExam.type)}`;
+  }
+
+  async function searchEnglishExam() {
+    if (state.englishExam.loading) return;
+    const books = englishBooks();
+    const book = books.find((entry) => entry.id === $('#englishExamBook')?.value) || books[0];
+    const chapter = $('#englishExamChapter')?.value || book?.chapters[0]?.name || '';
+    const type = $('#englishExamType')?.value || '阅读理解';
+    const count = Math.max(1, Math.min(10, Number($('#englishExamCount')?.value) || 5));
+    state.englishExam = { ...state.englishExam, bookId: book?.id || '', chapter, type, count, loading: true, result: '' };
+    const status = $('#englishExamStatus');
+    const result = $('#englishExamResult');
+    const button = $('#englishExamSearch');
+    if (button) button.disabled = true;
+    if (status) status.innerHTML = '<span class="spinner"></span>AI 正在按课本、章节和题型整理题目…';
+    if (result) result.innerHTML = '<div class="ai-thinking"><span></span><span></span><span></span>正在查找题目…</div>';
+    try {
+      const ai = aiSettings();
+      const prompt = `你是高中英语命题与备考助手。请按以下分类提供 ${count} 道英语题目：\n教材：外研版 ${book?.name || ''}\n章节：${chapter}\n题目类型：${type}\n\n要求：\n1. 优先引用你确知的往年高考真题或公开模拟题；无法确认具体年份/来源时，必须明确写“模拟题（AI整理）”，不得编造年份、试卷名或出处。\n2. 每题必须标注【题目类型：${type}】，并给出题干、选项（如适用）、答案和简要解析。\n3. 题目难度贴近高中英语高考，围绕该章节主题和词汇。\n4. 用清晰的中文编号输出，不要输出与题目无关的说明。`;
+      const response = await api.ai.ask({ question: prompt, model: ai.model, reasoning: ai.reasoning });
+      if (!response || !response.ok) {
+        if (result) result.innerHTML = `<div class="politics-empty"><span>${icon('alert')}</span><strong>查找失败</strong><p>${esc((response && response.error) || 'AI 请求失败')}</p></div>`;
+        return;
+      }
+      state.englishExam.result = response.answer;
+      if (result) {
+        result.textContent = response.answer;
+        result.classList.add('has-content');
+      }
+      if (status) status.innerHTML = `<span></span>已整理 ${count} 道题 · ${esc(type)} · 请以原卷为准`;
+    } finally {
+      state.englishExam.loading = false;
+      if (button) button.disabled = false;
+    }
+  }
+
   /* ---------------- 时事政治 ---------------- */
 
   function politicsSubject() {
@@ -3694,11 +4217,16 @@
         showToast(state.politics.warning, { type: 'error', duration: 6000 });
         return;
       }
-      state.politics.items = result.items || [];
+      const rangeFrom = Date.parse(result.rangeFrom || '') || (Date.now() - days * 86400000);
+      const rangeTo = Date.parse(result.rangeTo || '') || Date.now();
+      state.politics.items = (Array.isArray(result.items) ? result.items : []).filter((item) => {
+        const time = new Date(item && item.publishedAt).getTime();
+        return Number.isFinite(time) && time >= rangeFrom && time <= rangeTo + 5 * 60 * 1000;
+      });
       state.politics.aiUsed = Boolean(result.aiUsed);
       state.politics.warning = result.warning || '';
-      state.politics.rangeFrom = result.rangeFrom || '';
-      state.politics.rangeTo = result.rangeTo || '';
+      state.politics.rangeFrom = new Date(rangeFrom).toISOString();
+      state.politics.rangeTo = new Date(rangeTo).toISOString();
       renderPolitics();
       if (state.politics.items.length) showToast(`已获取 ${state.politics.items.length} 条时事新闻。`, { type: 'success' });
     } finally {
@@ -3918,6 +4446,18 @@
         status.textContent = state.aiKeySaved ? '已保存（加密）' : '未设置';
       }).catch(() => { status.textContent = '读取失败'; });
     }
+    const featureGrid = $('#settingsFeatureGrid');
+    if (featureGrid) {
+      const features = featureSettings();
+      featureGrid.innerHTML = FEATURE_PAGES.map((item) => `<label class="settings-feature-item"><input type="checkbox" data-feature-setting="${item.key}"${features[item.key] !== false ? ' checked' : ''}><span>${esc(item.label)}</span></label>`).join('');
+    }
+    const widget = widgetSettings();
+    const widgetEnabled = $('#settingsWidgetEnabled');
+    if (widgetEnabled) widgetEnabled.checked = widget.enabled;
+    $$('[data-widget-slot]').forEach((select, index) => {
+      select.innerHTML = FEATURE_PAGES.map((item) => `<option value="${item.key}"${widget.items[index]?.page === item.key ? ' selected' : ''}>${esc(item.label)}</option>`).join('');
+      select.value = widget.items[index]?.page || FEATURE_PAGES[index]?.key || 'whiteboard';
+    });
   }
 
   async function saveSettings() {
@@ -3929,7 +4469,20 @@
       speed: Number($('#settingsDanmakuSpeed')?.value),
       fontSize: Number($('#settingsDanmakuFont')?.value)
     });
+    const features = {};
+    $$('[data-feature-setting]').forEach((input) => { features[input.dataset.featureSetting] = input.checked; });
+    state.settings.features = normalizeFeatureSettings(features);
+    const widgetItems = $$('[data-widget-slot]').map((select, index) => ({
+      page: select.value || DEFAULT_WIDGET_ITEMS[index].page,
+      label: pageLabel(select.value || DEFAULT_WIDGET_ITEMS[index].page)
+    }));
+    state.settings.widget = normalizeWidgetSettings({
+      enabled: $('#settingsWidgetEnabled')?.checked !== false,
+      items: widgetItems
+    });
     await persistLibrary();
+    applyFeatureVisibility();
+    applyWidgetSettings();
     showToast('通用设置已保存。', { type: 'success' });
   }
 
@@ -5936,9 +6489,11 @@
           <h3>课堂工具</h3>
           <ul class="help-list">
             <li><strong>AI 解答</strong>：填写并加密保存 DeepSeek API Key，可选择模型/推理等级、上传附件、AI 翻译和图片转文字。</li>
-            <li><strong>通用设置</strong>：统一设置所有 AI 功能的 API Key、默认模型/推理等级和时事政治弹幕。</li>
+            <li><strong>通用设置</strong>：统一设置 AI API Key、模型/推理等级、时事政治弹幕、功能显隐和桌面悬浮快捷球。</li>
+            <li><strong>桌面悬浮快捷键 / 批注</strong>：右下角校徽圆环快捷球可打开白板、展台、批注；批注支持截屏后圈画。</li>
             <li><strong>单词天天练</strong>：高中英语 3500 词库随机出题，英译汉/汉译英四选一，支持昵称通关排名。</li>
-            <li><strong>函数图像 / 科学计算器</strong>：绘制多条函数曲线并缩放、拖动；计算器支持三角函数、对数、幂等。</li>
+            <li><strong>函数图像 / 科学计算器</strong>：绘制多条函数曲线并缩放、拖动，鼠标靠近显示坐标；计算器支持三角函数、对数、幂等。</li>
+            <li><strong>环境音量 / 英语往年题</strong>：麦克风检测自习/晨读声级；按外研版课本章节和题型用 AI 整理英语题目。</li>
             <li><strong>时事政治</strong>：聚合 6 个权威媒体 RSS，按高考命题相关性筛选并最多展示 50 条，标注教材章节和命题角度，可打开原文并滚动弹幕。</li>
             <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址并支持网页缩放；可在右侧加密保存账号密码，登录页自动填充。</li>
             <li><strong>展台 / 白板</strong>：支持 1080P/720P/480P 采集、清晰度增强、旋转/镜像、全屏、缩放、鼠标移动、多色批画和橡皮；全屏时底部工具栏可直接控制。</li>
@@ -5956,7 +6511,7 @@
             <div class="help-team-copy">
               <strong>制作团队</strong>
               <span>开发者：陈凯阳　技术支持：孙浩翔、龚豪章</span>
-              <span>赞助人：李青洋　关键词提供：桑晨皓、任泽昱　使用 AI：DeepSeek Chat / Reasoner</span>
+              <span>赞助人：李青洋　关键词提供：桑晨皓、任泽昱　使用 AI：Deepseek-V4.1pro</span>
               <span>该软件已在 GitHub 开源</span>
               <a href="mailto:ba4iitqrz@163.com" data-email="ba4iitqrz@163.com">开发者邮箱：ba4iitqrz@163.com</a>
             </div>
@@ -6069,11 +6624,13 @@
     clearTimeout(searchTimer);
     searchTimer = 0;
     if (!PAGE_TITLES[page]) page = 'library';
+    if (page !== 'library' && !['data'].includes(page) && !featuresAllows(page)) page = 'library';
     if (state.page === 'camera' && page !== 'camera') stopCamera();
     if (state.page === 'phone' && page !== 'phone') {
       api.stopPhoneCast?.().catch(() => {});
       resetPhoneStage();
     }
+    if (state.page === 'volume' && page !== 'volume') stopVolume();
     state.page = page;
     ui.pagePanels.forEach((panel) => {
       panel.hidden = panel.dataset.panel !== page;
@@ -6097,6 +6654,9 @@
     if (page === 'graph') renderGraph();
     if (page === 'calculator') renderCalculator();
     if (page === 'politics') renderPolitics();
+    if (page === 'volume') renderVolume();
+    if (page === 'englishexam') renderEnglishExam();
+    if (page === 'annotation') renderAnnotation();
     if (page === 'settings') renderSettings();
     if (page === 'phone') renderPhone();
     if (page === 'timer') renderTimer();
@@ -6622,24 +7182,24 @@
     }
 
     const drawColorButton = event.target.closest('[data-draw-color]');
-    if (drawColorButton && (state.page === 'camera' || state.page === 'whiteboard')) {
+    if (drawColorButton && (['camera', 'whiteboard', 'annotation'].includes(state.page))) {
       setDrawingColor(drawColorButton.dataset.drawColor);
       return;
     }
 
     const moveToolButton = event.target.closest('[data-draw-tool="move"]');
-    if (moveToolButton && (state.page === 'camera' || state.page === 'whiteboard')) {
+    if (moveToolButton && (['camera', 'whiteboard', 'annotation'].includes(state.page))) {
       setMoveTool(activeDrawingState().tool !== 'move');
       return;
     }
 
     const eraserButton = event.target.closest('[data-draw-tool="eraser"]');
-    if (eraserButton && (state.page === 'camera' || state.page === 'whiteboard')) {
+    if (eraserButton && (['camera', 'whiteboard', 'annotation'].includes(state.page))) {
       setEraser(!activeDrawingState().eraser);
       return;
     }
 
-    if (event.target.closest('[data-draw-clear]') && (state.page === 'camera' || state.page === 'whiteboard')) {
+    if (event.target.closest('[data-draw-clear]') && (['camera', 'whiteboard', 'annotation'].includes(state.page))) {
       clearDrawing(activeDrawingState());
       return;
     }
@@ -6791,6 +7351,9 @@
     document.addEventListener('click', handleDocumentClick);
     bindQuestionEvents();
     bindClassroomToolEvents();
+    applyFeatureVisibility();
+    applyWidgetSettings();
+    api.onNavigate?.((page) => setPage(page));
 
     ui.search.addEventListener('input', () => {
       const value = ui.search.value;
@@ -7212,6 +7775,8 @@
       state.settings = result.settings && typeof result.settings === 'object' ? result.settings : {};
       state.settings.ai = normalizeAiSettings(state.settings.ai);
       state.settings.danmaku = normalizeDanmakuSettings(state.settings.danmaku);
+      state.settings.features = normalizeFeatureSettings(state.settings.features);
+      state.settings.widget = normalizeWidgetSettings(state.settings.widget);
       state.dataPath = result.libraryPath || result.dataDir || '';
       if (!state.settings.initialized && state.items.length === 0) {
         state.items = buildDemoItems();
@@ -7251,6 +7816,8 @@
       ui.listTitle.textContent = '课件库读取失败';
       ui.listSubtitle.textContent = '请检查数据目录，或重启软件后重试';
     }
+    applyFeatureVisibility();
+    applyWidgetSettings();
   }
 
   initApp();

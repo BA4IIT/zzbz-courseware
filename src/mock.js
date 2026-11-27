@@ -105,8 +105,8 @@
     async checkUpdate() {
       return {
         ok: true,
-        currentVersion: '1.9.0',
-        latestVersion: '1.9.0',
+        currentVersion: '2.0.0',
+        latestVersion: '2.0.0',
         isLatest: true,
         updateAvailable: false,
         releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
@@ -139,6 +139,9 @@
     onPhoneFrame() { return () => {}; },
     onUpdateProgress() { return () => {}; },
     async searchPolitics() { return { ok: false, error: '浏览器预览模式不能抓取网络新闻，请使用桌面程序。' }; },
+    async captureScreen() { return { ok: false, error: '浏览器预览模式不能截取桌面。' }; },
+    widget: { async configure() { return { ok: true }; }, hide() {} },
+    onNavigate() { return () => {}; },
     browserCredentials: {
       async get() { return { ok: true, username: '', password: '', savedAt: '' }; },
       async save() { return { ok: false, error: '浏览器预览模式不能保存账号。' }; },
@@ -164,7 +167,7 @@
       return {
         ok: true,
         name: '枣庄八中集成桌面教学系统',
-        version: '1.9.0',
+        version: '2.0.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',

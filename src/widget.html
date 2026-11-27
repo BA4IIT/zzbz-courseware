@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>八中快捷</title>
+  <style>
+    :root {
+      --ink: #244f6d;
+      --blue: #347fb5;
+      --line: rgba(137, 187, 222, 0.55);
+      --glass: rgba(247, 252, 255, 0.94);
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    body {
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .widget-shell {
+      position: absolute;
+      inset: 15px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 32% 20%, rgba(255,255,255,.98), rgba(237,249,255,.92) 58%, rgba(222,242,255,.9));
+      box-shadow: 0 16px 42px rgba(28, 81, 119, .22), inset 0 0 0 7px rgba(255,255,255,.46);
+      -webkit-app-region: drag;
+      backdrop-filter: blur(13px);
+      animation: widget-in .35s ease-out both;
+    }
+    .widget-shell::before {
+      content: "";
+      position: absolute;
+      inset: 14px;
+      border: 1px dashed rgba(77, 146, 193, .28);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .widget-center {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      display: grid;
+      place-items: center;
+      width: 76px;
+      height: 76px;
+      transform: translate(-50%, -50%);
+      overflow: hidden;
+      background: #fff;
+      border: 3px solid rgba(255,255,255,.96);
+      border-radius: 50%;
+      box-shadow: 0 6px 18px rgba(32, 90, 129, .18);
+      -webkit-app-region: drag;
+    }
+    .widget-center img { width: 100%; height: 100%; object-fit: cover; }
+    .widget-center span {
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+      background: #2f7fb5;
+      border: 2px solid #fff;
+      border-radius: 50%;
+    }
+    .widget-slot {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      gap: 3px;
+      width: 59px;
+      height: 59px;
+      padding: 0;
+      color: var(--ink);
+      background: rgba(255,255,255,.86);
+      border: 1px solid rgba(131, 184, 219, .55);
+      border-radius: 50%;
+      box-shadow: 0 4px 12px rgba(38, 92, 127, .12);
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      transition: transform .16s, box-shadow .16s, background .16s;
+    }
+    .widget-slot:hover {
+      transform: scale(1.08);
+      background: #fff;
+      box-shadow: 0 7px 17px rgba(38, 92, 127, .2);
+    }
+    .widget-slot .slot-mark {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: #2f7fb5;
+      background: #edf8ff;
+      border-radius: 50%;
+    }
+    .widget-slot .slot-label { font-size: 9px; font-weight: 600; white-space: nowrap; }
+    .widget-slot[data-slot="0"] { left: 29px; top: 38px; }
+    .widget-slot[data-slot="1"] { right: 29px; top: 38px; }
+    .widget-slot[data-slot="2"] { left: 50%; bottom: 26px; transform: translateX(-50%); }
+    .widget-slot[data-slot="2"]:hover { transform: translateX(-50%) scale(1.08); }
+    .widget-close {
+      position: absolute;
+      top: 21px;
+      right: 23px;
+      z-index: 5;
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1;
+      color: #7e9bb0;
+      background: rgba(255,255,255,.7);
+      border: 0;
+      border-radius: 50%;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    .widget-close:hover { color: #b05f5f; background: #fff2f2; }
+    .widget-title {
+      position: absolute;
+      left: 50%;
+      top: 13px;
+      transform: translateX(-50%);
+      font-size: 7px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #8baabe;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    @keyframes widget-in {
+      from { opacity: 0; transform: scale(.88); }
+      to { opacity: 1; transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <div class="widget-shell">
+    <span class="widget-title">ZZBZ · 快捷工具</span>
+    <button type="button" class="widget-close" id="widgetClose" title="隐藏悬浮快捷键">×</button>
+    <div class="widget-center">
+      <img src="../assets/school-badge.png" alt="八中校徽">
+      <span>八中</span>
+    </div>
+    <button type="button" class="widget-slot" data-slot="0"><span class="slot-mark">白</span><span class="slot-label">白板</span></button>
+    <button type="button" class="widget-slot" data-slot="1"><span class="slot-mark">展</span><span class="slot-label">展台</span></button>
+    <button type="button" class="widget-slot" data-slot="2"><span class="slot-mark">批</span><span class="slot-label">批注</span></button>
+  </div>
+  <script>
+    (() => {
+      const marks = { whiteboard: '白', camera: '展', annotation: '批', browser: '网', graph: 'ƒ', calculator: '算', politics: '闻', timer: '时', volume: '音', englishexam: '英', students: '点', vote: '票' };
+      const slots = Array.from(document.querySelectorAll('.widget-slot'));
+      const applyConfig = (config) => {
+        const items = config && Array.isArray(config.items) ? config.items : [];
+        slots.forEach((slot, index) => {
+          const item = items[index];
+          slot.hidden = !item;
+          if (!item) return;
+          slot.dataset.page = item.page;
+          slot.querySelector('.slot-mark').textContent = marks[item.page] || (item.label || '·').slice(0, 1);
+          slot.querySelector('.slot-label').textContent = item.label || item.page;
+          slot.title = item.label || item.page;
+        });
+      };
+      slots.forEach((slot) => {
+        slot.addEventListener('click', () => {
+          if (slot.dataset.page) window.widgetAPI.openPage(slot.dataset.page);
+        });
+      });
+      document.getElementById('widgetClose').addEventListener('click', () => window.widgetAPI.hide());
+      if (window.widgetAPI && window.widgetAPI.onConfig) window.widgetAPI.onConfig(applyConfig);
+    })();
+  </script>
+</body>
+</html>
