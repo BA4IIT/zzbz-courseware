@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -94,6 +94,10 @@
             <button type="button" class="nav-item" data-page="englishexam">
               <span class="nav-icon" data-icon="bookOpen"></span>
               <span class="nav-text">英语往年题</span>
+            </button>
+            <button type="button" class="nav-item" data-page="englishweb">
+              <span class="nav-icon" data-icon="globe"></span>
+              <span class="nav-text">英语网</span>
             </button>
             <button type="button" class="nav-item" data-page="calculator">
               <span class="nav-icon" data-icon="calculator"></span>
@@ -1207,6 +1211,34 @@
               </div>
             </section>
 
+            <!-- 英语网 -->
+            <section class="page-panel" id="page-englishweb" data-panel="englishweb" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> ENGLISH WEB</div>
+                  <h1>英语网</h1>
+                  <p>内置浏览牛津英语学习网页，可在软件内直接打开、返回或刷新。</p>
+                </div>
+                <div class="englishweb-head-actions">
+                  <button type="button" class="btn btn-light" id="englishWebHome"><span data-icon="globe"></span>回到首页</button>
+                  <button type="button" class="btn btn-light" id="englishWebExternal"><span data-icon="external"></span>系统浏览器打开</button>
+                </div>
+              </div>
+              <section class="englishweb-card">
+                <div class="englishweb-toolbar">
+                  <button type="button" class="btn btn-light" id="englishWebBack"><span data-icon="arrowLeft"></span>后退</button>
+                  <button type="button" class="btn btn-light" id="englishWebForward"><span data-icon="arrowRight"></span>前进</button>
+                  <button type="button" class="btn btn-light" id="englishWebReload"><span data-icon="refresh"></span>刷新</button>
+                  <div class="englishweb-address"><span data-icon="lock"></span>https://cybertamin.xin/lang/en/</div>
+                  <span class="englishweb-status" id="englishWebStatus">准备打开</span>
+                </div>
+                <div class="englishweb-stage">
+                  <webview id="englishWebview" src="https://cybertamin.xin/lang/en/" allowpopups partition="persist:englishweb"></webview>
+                  <div class="englishweb-loading" id="englishWebLoading"><span class="spinner"></span>正在打开英语网…</div>
+                </div>
+              </section>
+            </section>
+
             <!-- 时事政治 -->
             <section class="page-panel" id="page-politics" data-panel="politics" hidden>
               <div class="page-heading">
@@ -1311,6 +1343,8 @@
                       <label class="question-field"><span>快捷键 1</span><select data-widget-slot="0"></select></label>
                       <label class="question-field"><span>快捷键 2</span><select data-widget-slot="1"></select></label>
                       <label class="question-field"><span>快捷键 3</span><select data-widget-slot="2"></select></label>
+                      <label class="question-field"><span>快捷键 4</span><select data-widget-slot="3"></select></label>
+                      <label class="question-field"><span>快捷键 5</span><select data-widget-slot="4"></select></label>
                     </div>
                     <p class="settings-note">悬浮快捷键中间为八中校徽，点击外侧功能键可打开对应功能；关闭上面的开关即可隐藏。</p>
                   </div>
@@ -1386,7 +1420,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.0.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.1.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中集成桌面教学系统</strong><span>课件管理 · 课堂互动 · 教学工具</span></div>

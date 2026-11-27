@@ -186,6 +186,7 @@
     politics: '时事政治',
     volume: '环境音量',
     englishexam: '英语往年题',
+    englishweb: '英语网',
     annotation: '批注',
     settings: '通用设置',
     vote: '科目投票',
@@ -199,7 +200,7 @@
     usb: 'U 盘检测',
     data: '数据管理'
   };
-  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics', 'volume', 'englishexam', 'browser', 'camera', 'whiteboard', 'annotation', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer', 'settings']);
+  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics', 'volume', 'englishexam', 'englishweb', 'browser', 'camera', 'whiteboard', 'annotation', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer', 'settings']);
   const ADMIN_PASSWORD = '6767';
   const VOTE_EXTRA_SUBJECTS = [
     { id: 'music', name: '音乐', short: '音', color: '#c56f9e' },
@@ -1262,7 +1263,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '2.0.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.1.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1695,7 +1696,8 @@
     { key: 'phone', label: '手机投屏' },
     { key: 'timer', label: '计时器' },
     { key: 'volume', label: '环境音量' },
-    { key: 'englishexam', label: '英语往年题' }
+    { key: 'englishexam', label: '英语往年题' },
+    { key: 'englishweb', label: '英语网' }
   ];
 
   const DEFAULT_WIDGET_ITEMS = [
@@ -1713,13 +1715,14 @@
 
   function normalizeWidgetSettings(raw) {
     const source = raw && typeof raw === 'object' ? raw : {};
-    const items = (Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS)
-      .slice(0, 3)
-      .map((item, index) => ({
-        page: String(item && item.page || DEFAULT_WIDGET_ITEMS[index].page),
-        label: String(item && item.label || DEFAULT_WIDGET_ITEMS[index].label).slice(0, 12)
-      }));
-    while (items.length < 3) items.push(DEFAULT_WIDGET_ITEMS[items.length]);
+    const sourceItems = Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS;
+    const items = sourceItems
+      .slice(0, 5)
+      .map((item) => ({
+        page: String(item && item.page || ''),
+        label: String(item && item.label || '').slice(0, 12)
+      }))
+      .filter((item) => item.page);
     return { enabled: source.enabled !== false, items };
   }
 
@@ -3393,6 +3396,7 @@
     });
     const englishExamSearch = $('#englishExamSearch');
     if (englishExamSearch) englishExamSearch.addEventListener('click', searchEnglishExam);
+    bindEnglishWebControls();
 
     const settingsSaveKey = $('#settingsSaveKey');
     if (settingsSaveKey) settingsSaveKey.addEventListener('click', saveSettingsKey);
@@ -4086,6 +4090,70 @@
     }
   }
 
+  /* ---------------- 英语网 ---------------- */
+
+  function renderEnglishWeb() {
+    const webview = $('#englishWebview');
+    if (!webview) return;
+    if (webview.dataset.bound === '1') {
+      const existing = $('#englishWebLoading');
+      if (existing && webview.getURL?.()) existing.hidden = true;
+      return;
+    }
+    webview.dataset.bound = '1';
+    const loading = $('#englishWebLoading');
+    const status = $('#englishWebStatus');
+    const updateStatus = () => {
+      const url = webview.getURL?.() || '';
+      if (status) status.textContent = url ? (url.includes('cybertamin.xin') ? '英语网' : url.replace(/^https?:\/\//, '').slice(0, 42)) : '准备打开';
+    };
+    webview.addEventListener('did-start-loading', () => {
+      if (loading) loading.hidden = false;
+      if (status) status.textContent = '正在打开…';
+    });
+    webview.addEventListener('did-stop-loading', () => {
+      if (loading) loading.hidden = true;
+      updateStatus();
+    });
+    webview.addEventListener('did-navigate', () => {
+      if (loading) loading.hidden = true;
+      updateStatus();
+    });
+    webview.addEventListener('did-navigate-in-page', updateStatus);
+    webview.addEventListener('dom-ready', () => {
+      if (loading) loading.hidden = true;
+      updateStatus();
+    });
+    webview.addEventListener('did-frame-finish-load', () => {
+      if (loading) loading.hidden = true;
+      updateStatus();
+    });
+    window.setTimeout(() => { if (loading) loading.hidden = true; }, 2600);
+    webview.addEventListener('did-fail-load', (event) => {
+      if (loading) loading.hidden = true;
+      if (status) status.textContent = event.errorDescription || '网页打开失败';
+    });
+    const currentUrl = webview.getURL?.() || '';
+    if (currentUrl) {
+      if (loading) loading.hidden = true;
+      if (status) status.textContent = currentUrl.includes('cybertamin.xin') ? '英语网' : currentUrl.slice(0, 48);
+    }
+  }
+
+  function bindEnglishWebControls() {
+    const webview = $('#englishWebview');
+    const home = $('#englishWebHome');
+    if (home) home.addEventListener('click', () => webview?.loadURL('https://cybertamin.xin/lang/en/').catch(() => {}));
+    const back = $('#englishWebBack');
+    if (back) back.addEventListener('click', () => webview?.canGoBack?.() && webview.goBack());
+    const forward = $('#englishWebForward');
+    if (forward) forward.addEventListener('click', () => webview?.canGoForward?.() && webview.goForward());
+    const reload = $('#englishWebReload');
+    if (reload) reload.addEventListener('click', () => webview?.reload?.());
+    const external = $('#englishWebExternal');
+    if (external) external.addEventListener('click', () => api.openExternal(webview?.getURL?.() || 'https://cybertamin.xin/lang/en/'));
+  }
+
   /* ---------------- 时事政治 ---------------- */
 
   function politicsSubject() {
@@ -4455,8 +4523,8 @@
     const widgetEnabled = $('#settingsWidgetEnabled');
     if (widgetEnabled) widgetEnabled.checked = widget.enabled;
     $$('[data-widget-slot]').forEach((select, index) => {
-      select.innerHTML = FEATURE_PAGES.map((item) => `<option value="${item.key}"${widget.items[index]?.page === item.key ? ' selected' : ''}>${esc(item.label)}</option>`).join('');
-      select.value = widget.items[index]?.page || FEATURE_PAGES[index]?.key || 'whiteboard';
+      select.innerHTML = `<option value="">不显示</option>` + FEATURE_PAGES.map((item) => `<option value="${item.key}"${widget.items[index]?.page === item.key ? ' selected' : ''}>${esc(item.label)}</option>`).join('');
+      select.value = widget.items[index]?.page || '';
     });
   }
 
@@ -4472,10 +4540,12 @@
     const features = {};
     $$('[data-feature-setting]').forEach((input) => { features[input.dataset.featureSetting] = input.checked; });
     state.settings.features = normalizeFeatureSettings(features);
-    const widgetItems = $$('[data-widget-slot]').map((select, index) => ({
-      page: select.value || DEFAULT_WIDGET_ITEMS[index].page,
-      label: pageLabel(select.value || DEFAULT_WIDGET_ITEMS[index].page)
-    }));
+    const widgetItems = $$('[data-widget-slot]')
+      .filter((select) => select.value)
+      .map((select) => ({
+        page: select.value,
+        label: pageLabel(select.value)
+      }));
     state.settings.widget = normalizeWidgetSettings({
       enabled: $('#settingsWidgetEnabled')?.checked !== false,
       items: widgetItems
@@ -6490,11 +6560,11 @@
           <ul class="help-list">
             <li><strong>AI 解答</strong>：填写并加密保存 DeepSeek API Key，可选择模型/推理等级、上传附件、AI 翻译和图片转文字。</li>
             <li><strong>通用设置</strong>：统一设置 AI API Key、模型/推理等级、时事政治弹幕、功能显隐和桌面悬浮快捷球。</li>
-            <li><strong>桌面悬浮快捷键 / 批注</strong>：右下角校徽圆环快捷球可打开白板、展台、批注；批注支持截屏后圈画。</li>
+            <li><strong>桌面悬浮快捷键 / 批注</strong>：右下角校徽圆环快捷球可配置 1—5 个功能（默认白板、展台、批注）；关闭软件时快捷球同步退出。</li>
             <li><strong>单词天天练</strong>：高中英语 3500 词库随机出题，英译汉/汉译英四选一，支持昵称通关排名。</li>
             <li><strong>函数图像 / 科学计算器</strong>：绘制多条函数曲线并缩放、拖动，鼠标靠近显示坐标；计算器支持三角函数、对数、幂等。</li>
-            <li><strong>环境音量 / 英语往年题</strong>：麦克风检测自习/晨读声级；按外研版课本章节和题型用 AI 整理英语题目。</li>
-            <li><strong>时事政治</strong>：聚合 6 个权威媒体 RSS，按高考命题相关性筛选并最多展示 50 条，标注教材章节和命题角度，可打开原文并滚动弹幕。</li>
+            <li><strong>环境音量 / 英语往年题 / 英语网</strong>：麦克风检测自习/晨读声级；按外研版课本章节和题型用 AI 整理题目；英语网内置打开 cybertamin.xin/lang/en/。</li>
+            <li><strong>时事政治</strong>：聚合人民网、新华网、中国新闻网、中国政府网等权威来源，按高考命题相关性筛选并最多展示 50 条，标注教材章节和命题角度。</li>
             <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址并支持网页缩放；可在右侧加密保存账号密码，登录页自动填充。</li>
             <li><strong>展台 / 白板</strong>：支持 1080P/720P/480P 采集、清晰度增强、旋转/镜像、全屏、缩放、鼠标移动、多色批画和橡皮；全屏时底部工具栏可直接控制。</li>
             <li><strong>科目投票</strong>：每天按日期为 13 个学科投票，查看结果需要管理员密码。</li>
@@ -6656,6 +6726,7 @@
     if (page === 'politics') renderPolitics();
     if (page === 'volume') renderVolume();
     if (page === 'englishexam') renderEnglishExam();
+    if (page === 'englishweb') renderEnglishWeb();
     if (page === 'annotation') renderAnnotation();
     if (page === 'settings') renderSettings();
     if (page === 'phone') renderPhone();

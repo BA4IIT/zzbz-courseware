@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -673,7 +673,7 @@ function normalizeWordGameScores(raw) {
 const FEATURE_KEYS = [
   'vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics',
   'camera', 'whiteboard', 'annotation', 'browser', 'timetable', 'usb',
-  'vote', 'students', 'phone', 'timer', 'volume', 'englishexam'
+  'vote', 'students', 'phone', 'timer', 'volume', 'englishexam', 'englishweb'
 ];
 
 const DEFAULT_WIDGET_ITEMS = [
@@ -691,13 +691,14 @@ function normalizeFeatureSettings(raw) {
 
 function normalizeWidgetSettings(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
-  const items = (Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS)
-    .slice(0, 3)
-    .map((item, index) => ({
-      page: normalizeString(item && item.page, 40) || DEFAULT_WIDGET_ITEMS[index].page,
-      label: normalizeString(item && item.label, 12) || DEFAULT_WIDGET_ITEMS[index].label
-    }));
-  while (items.length < 3) items.push(DEFAULT_WIDGET_ITEMS[items.length]);
+  const sourceItems = Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS;
+  const items = sourceItems
+    .slice(0, 5)
+    .map((item) => ({
+      page: normalizeString(item && item.page, 40),
+      label: normalizeString(item && item.label, 12)
+    }))
+    .filter((item) => item.page);
   return { enabled: source.enabled !== false, items };
 }
 
@@ -1103,8 +1104,43 @@ const POLITICS_FEEDS = [
   { source: '中国新闻网', url: 'https://www.chinanews.com.cn/rss/scroll-news.xml' },
   { source: '中国新闻网·国内', url: 'https://www.chinanews.com.cn/rss/china.xml' },
   { source: '人民网·国际', url: 'https://www.people.com.cn/rss/world.xml' },
-  { source: '新华网·国际', url: 'https://www.xinhuanet.com/world/news_world.xml' }
+  { source: '新华网·国际', url: 'https://www.xinhuanet.com/world/news_world.xml' },
+  { source: '中国政府网', url: 'https://www.gov.cn/pushinfo/v150203/rss.xml' }
 ];
+
+async function fetchXinhuaPoliticsPage() {
+  const response = await net.fetch('https://www.news.cn/politics/', {
+    headers: { 'User-Agent': 'Mozilla/5.0 ZZBZ-Courseware-News', Accept: 'text/html' }
+  });
+  if (!response.ok) throw new Error(`新华网 ${response.status}`);
+  const html = await response.text();
+  const items = [];
+  const seen = new Set();
+  const pattern = /<a\b[^>]*href=['"]([^'"]*\/20\d{6}\/[^'"]+)['"][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = pattern.exec(html)) && items.length < 120) {
+    const href = match[1];
+    const title = stripXmlTags(match[2]);
+    if (!title || title.length < 8) continue;
+    const dateMatch = href.match(/\/20(\d{2})(\d{2})(\d{2})\//);
+    if (!dateMatch) continue;
+    const key = title.replace(/\s+/g, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const published = new Date(`20${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00+08:00`);
+    if (Number.isNaN(published.getTime())) continue;
+    let link;
+    try { link = new URL(href, 'https://www.news.cn/politics/').toString(); } catch (error) { continue; }
+    items.push({
+      title,
+      link,
+      description: '',
+      source: '新华网',
+      publishedAt: published.toISOString()
+    });
+  }
+  return items;
+}
 
 const POLITICS_EXAM_KEYWORDS = [
   '经济', '政治', '文化', '社会', '生态', '绿色', '发展', '改革', '开放', '创新', '科技',
@@ -1166,13 +1202,16 @@ function parseRssItems(xml, source) {
 async function fetchPoliticalNews(days) {
   const now = Date.now();
   const since = now - Math.max(1, Math.min(180, Number(days) || 7)) * 24 * 60 * 60 * 1000;
-  const results = await Promise.allSettled(POLITICS_FEEDS.map(async (feed) => {
-    const response = await net.fetch(feed.url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 ZZBZ-Courseware-News', Accept: 'application/rss+xml,text/xml,text/html' }
-    });
-    if (!response.ok) throw new Error(`${feed.source} RSS ${response.status}`);
-    return parseRssItems(await response.text(), feed.source);
-  }));
+  const results = await Promise.allSettled([
+    ...POLITICS_FEEDS.map(async (feed) => {
+      const response = await net.fetch(feed.url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 ZZBZ-Courseware-News', Accept: 'application/rss+xml,text/xml,text/html' }
+      });
+      if (!response.ok) throw new Error(`${feed.source} RSS ${response.status}`);
+      return parseRssItems(await response.text(), feed.source);
+    }),
+    fetchXinhuaPoliticsPage()
+  ]);
   const seen = new Set();
   const items = [];
   results.forEach((result) => {
@@ -1266,7 +1305,7 @@ async function analyzePoliticalNews(items, chapters, model, reasoning) {
 function normalizeWidgetConfig(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const items = (Array.isArray(source.items) ? source.items : [])
-    .slice(0, 3)
+    .slice(0, 5)
     .map((item) => ({
       page: normalizeString(item && item.page, 40),
       label: normalizeString(item && item.label, 12)
@@ -2196,6 +2235,12 @@ function createWindow() {
   mainWindow.on('leave-full-screen', sendMaximizedState);
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // 悬浮球是独立窗口；主窗口关闭时必须一起销毁，否则会阻止应用退出。
+    if (widgetWindow && !widgetWindow.isDestroyed()) {
+      widgetWindow.destroy();
+      widgetWindow = null;
+    }
+    app.quit();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -2320,7 +2365,10 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (!mainWindow) return;
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow();
+      return;
+    }
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
@@ -2347,6 +2395,10 @@ if (!gotLock) {
 
   app.on('before-quit', () => {
     stopPhoneCast();
+    if (widgetWindow && !widgetWindow.isDestroyed()) {
+      widgetWindow.destroy();
+      widgetWindow = null;
+    }
   });
 
   app.on('window-all-closed', () => {
