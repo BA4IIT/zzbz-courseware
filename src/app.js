@@ -1270,7 +1270,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '2.3.1'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.3.2'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');

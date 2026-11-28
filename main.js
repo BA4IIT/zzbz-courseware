@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.2';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -1382,10 +1382,7 @@ function createTray() {
     tray.setToolTip(APP_NAME);
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: '显示主界面', click: showMainWindow },
-      { label: '隐藏到托盘', click: () => {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
-        if (widgetWindow && !widgetWindow.isDestroyed()) { widgetWindow.destroy(); widgetWindow = null; }
-      } },
+      { label: '隐藏到托盘', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } },
       { type: 'separator' },
       { label: '退出软件', click: () => { isQuitting = true; app.quit(); } }
     ]));
@@ -2409,11 +2406,7 @@ function createWindow() {
     if (isQuitting) return;
     event.preventDefault();
     mainWindow.hide();
-    // 主窗口隐藏/关闭时立即销毁悬浮球，避免软件还在托盘时悬浮球残留。
-    if (widgetWindow && !widgetWindow.isDestroyed()) {
-      widgetWindow.destroy();
-      widgetWindow = null;
-    }
+    // 关闭主窗口只隐藏到托盘，悬浮球保持显示；真正退出由托盘菜单执行。
     if (annotationWindow && !annotationWindow.isDestroyed()) annotationWindow.close();
   });
   mainWindow.on('closed', () => {
