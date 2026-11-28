@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>屏幕批注</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    body { font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif; user-select: none; -webkit-user-select: none; }
+    #annotationOverlayCanvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+    .overlay-toolbar {
+      position: fixed; left: 50%; bottom: 26px; z-index: 10;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      max-width: calc(100vw - 40px); padding: 9px 13px;
+      color: #eaf6ff; background: rgba(12, 30, 42, .86);
+      border: 1px solid rgba(191, 225, 245, .3); border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(3, 18, 30, .35); backdrop-filter: blur(12px);
+      transform: translateX(-50%);
+    }
+    .overlay-swatches { display: flex; gap: 5px; }
+    .overlay-color { width: 25px; height: 25px; padding: 0; background: var(--c); border: 2px solid rgba(255,255,255,.38); border-radius: 50%; cursor: pointer; }
+    .overlay-color.is-active { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.2); }
+    .overlay-tool { min-height: 32px; padding: 0 10px; font-family: inherit; font-size: 10px; color: #eaf6ff; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); border-radius: 7px; cursor: pointer; }
+    .overlay-tool:hover, .overlay-tool.is-active { background: rgba(89, 163, 207, .42); }
+    .overlay-width { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; color: #cfe6f4; }
+    .overlay-width input { width: 78px; accent-color: #72bde5; }
+    .overlay-close { color: #ffd9d9; border-color: rgba(255, 169, 169, .35); }
+    .overlay-hint { position: fixed; left: 50%; top: 15px; transform: translateX(-50%); padding: 6px 12px; font-size: 9px; color: #d8edf9; background: rgba(18, 42, 57, .72); border-radius: 999px; pointer-events: none; }
+    .overlay-toolbar[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="annotationOverlayCanvas"></canvas>
+  <div class="overlay-hint" id="overlayHint">在屏幕上层直接批注 · Esc 退出</div>
+  <div class="overlay-toolbar" id="overlayToolbar">
+    <div class="overlay-swatches">
+      <button type="button" class="overlay-color is-active" data-color="#e35d5d" style="--c:#e35d5d"></button>
+      <button type="button" class="overlay-color" data-color="#f2c94c" style="--c:#f2c94c"></button>
+      <button type="button" class="overlay-color" data-color="#3fa5e0" style="--c:#3fa5e0"></button>
+      <button type="button" class="overlay-color" data-color="#49b889" style="--c:#49b889"></button>
+      <button type="button" class="overlay-color" data-color="#ffffff" style="--c:#ffffff"></button>
+    </div>
+    <label class="overlay-width">笔粗 <input id="overlayWidth" type="range" min="1" max="28" value="6"></label>
+    <button type="button" class="overlay-tool" id="overlayEraser">橡皮</button>
+    <button type="button" class="overlay-tool" id="overlayClear">清空</button>
+    <button type="button" class="overlay-tool" id="overlaySave">保存 PNG</button>
+    <button type="button" class="overlay-tool overlay-close" id="overlayClose">退出批注</button>
+  </div>
+  <script>
+    (() => {
+      const canvas = document.getElementById('annotationOverlayCanvas');
+      const context = canvas.getContext('2d');
+      let color = '#e35d5d';
+      let width = 6;
+      let eraser = false;
+      let drawing = false;
+      let last = null;
+      let dpr = 1;
+      const resize = () => {
+        const snapshot = canvas.width > 1 ? canvas.toDataURL('image/png') : '';
+        dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.round(innerWidth * dpr));
+        canvas.height = Math.max(1, Math.round(innerHeight * dpr));
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (snapshot) {
+          const image = new Image();
+          image.onload = () => context.drawImage(image, 0, 0, innerWidth, innerHeight);
+          image.src = snapshot;
+        }
+      };
+      const point = (event) => ({ x: event.clientX, y: event.clientY });
+      const begin = (event) => {
+        drawing = true;
+        last = point(event);
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        context.lineWidth = width;
+        context.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
+        context.strokeStyle = color;
+        context.fillStyle = color;
+        context.beginPath();
+        context.arc(last.x, last.y, width / 2, 0, Math.PI * 2);
+        context.fill();
+      };
+      const move = (event) => {
+        if (!drawing) return;
+        const next = point(event);
+        context.beginPath();
+        context.moveTo(last.x, last.y);
+        context.lineTo(next.x, next.y);
+        context.stroke();
+        last = next;
+      };
+      canvas.addEventListener('pointerdown', (event) => { event.preventDefault(); begin(event); canvas.setPointerCapture?.(event.pointerId); });
+      canvas.addEventListener('pointermove', (event) => { event.preventDefault(); move(event); });
+      const end = () => { drawing = false; last = null; };
+      canvas.addEventListener('pointerup', end);
+      canvas.addEventListener('pointercancel', end);
+      document.querySelectorAll('[data-color]').forEach((button) => button.addEventListener('click', () => {
+        color = button.dataset.color;
+        eraser = false;
+        document.querySelectorAll('[data-color]').forEach((entry) => entry.classList.toggle('is-active', entry === button));
+        document.getElementById('overlayEraser').classList.remove('is-active');
+      }));
+      document.getElementById('overlayWidth').addEventListener('input', (event) => { width = Number(event.target.value) || 6; });
+      document.getElementById('overlayEraser').addEventListener('click', (event) => {
+        eraser = !eraser;
+        event.currentTarget.classList.toggle('is-active', eraser);
+      });
+      document.getElementById('overlayClear').addEventListener('click', () => context.clearRect(0, 0, innerWidth, innerHeight));
+      document.getElementById('overlaySave').addEventListener('click', async () => {
+        const result = await window.annotationAPI.save(canvas.toDataURL('image/png'));
+        if (result && result.ok) document.getElementById('overlayHint').textContent = `已保存：${result.filePath}`;
+        else if (result && !result.canceled) document.getElementById('overlayHint').textContent = result.error || '保存失败';
+      });
+      document.getElementById('overlayClose').addEventListener('click', () => window.annotationAPI.close());
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') window.annotationAPI.close();
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); document.getElementById('overlaySave').click(); }
+      });
+      window.addEventListener('resize', resize);
+      resize();
+    })();
+  </script>
+</body>
+</html>

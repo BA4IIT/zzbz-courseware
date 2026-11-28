@@ -6,8 +6,8 @@
   <title>八中快捷</title>
   <style>
     :root {
-      --widget-size: 260px;
-      --slot-size: 52px;
+      --widget-size: 220px;
+      --slot-size: calc(var(--widget-size) * 0.20);
       --slot-radius: calc(var(--widget-size) * 0.32);
       --slot-angle: -90deg;
       --slot-counter-angle: 90deg;
@@ -50,16 +50,26 @@
       top: 50%;
       display: grid;
       place-items: center;
-      width: 76px;
-      height: 76px;
+      width: calc(var(--widget-size) * 0.28);
+      height: calc(var(--widget-size) * 0.28);
       transform: translate(-50%, -50%);
       overflow: hidden;
       background: #fff;
       border: 3px solid rgba(255,255,255,.96);
       border-radius: 50%;
       box-shadow: 0 6px 18px rgba(32, 90, 129, .18);
-      -webkit-app-region: drag;
+      -webkit-app-region: no-drag;
+      cursor: pointer;
     }
+    .widget-shell.is-collapsed {
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+    }
+    .widget-shell.is-collapsed::before,
+    .widget-shell.is-collapsed .widget-slot { display: none; }
+    body.is-collapsed .widget-close { display: none; }
     .widget-center img { width: 100%; height: 100%; object-fit: cover; }
     .widget-center span {
       position: absolute;
@@ -104,16 +114,16 @@
     .widget-slot .slot-mark {
       display: grid;
       place-items: center;
-      width: 24px;
-      height: 24px;
+      width: calc(var(--widget-size) * 0.09);
+      height: calc(var(--widget-size) * 0.09);
       font-family: Georgia, "Times New Roman", serif;
-      font-size: 14px;
+      font-size: calc(var(--widget-size) * 0.052);
       font-weight: 700;
       color: #2f7fb5;
       background: #edf8ff;
       border-radius: 50%;
     }
-    .widget-slot .slot-label { font-size: 9px; font-weight: 600; white-space: nowrap; }
+    .widget-slot .slot-label { font-size: calc(var(--widget-size) * 0.034); font-weight: 600; white-space: nowrap; }
     .widget-close {
       position: absolute;
       top: 6px;
@@ -172,11 +182,11 @@
   <script>
     (() => {
       const marks = { whiteboard: '白', camera: '展', annotation: '批', browser: '网', graph: 'ƒ', calculator: '算', politics: '闻', timer: '时', volume: '音', englishexam: '英', students: '点', vote: '票' };
-      const shortLabels = { whiteboard: '白板', camera: '展台', annotation: '批注', englishweb: '英语', graph: '函数', calculator: '计算器', volume: '音量', browser: '浏览器', timer: '计时', politics: '时事', englishexam: '往年题', students: '点名', vote: '投票', phone: '投屏', ai: 'AI', wordgame: '单词', vocab: '3500' };
+      const shortLabels = { whiteboard: '白板', camera: '展台', annotation: '批注', englishweb: '英语', graph: '函数', calculator: '计算器', volume: '音量', browser: '浏览器', timer: '计时', clock: '时间', politics: '时事', englishexam: '往年题', students: '点名', vote: '投票', phone: '投屏', ai: 'AI', wordgame: '单词', vocab: '3500' };
       const slots = Array.from(document.querySelectorAll('.widget-slot'));
       const applyConfig = (config) => {
         const items = config && Array.isArray(config.items) ? config.items : [];
-        const size = Math.max(240, Math.min(380, Number(config && config.size) || 260));
+        const size = Math.max(180, Math.min(360, Number(config && config.size) || 220));
         document.documentElement.style.setProperty('--widget-size', `${size}px`);
         const visible = [];
         slots.forEach((slot, index) => {
@@ -202,6 +212,13 @@
         slot.addEventListener('click', () => {
           if (slot.dataset.page) window.widgetAPI.openPage(slot.dataset.page);
         });
+      });
+      const shell = document.querySelector('.widget-shell');
+      const center = document.querySelector('.widget-center');
+      center.addEventListener('click', () => {
+        const collapsed = shell.classList.toggle('is-collapsed');
+        document.body.classList.toggle('is-collapsed', collapsed);
+        center.title = collapsed ? '点击恢复快捷功能' : '点击只保留校徽';
       });
       document.getElementById('widgetClose').addEventListener('click', () => window.widgetAPI.hide());
       if (window.widgetAPI && window.widgetAPI.onConfig) window.widgetAPI.onConfig(applyConfig);

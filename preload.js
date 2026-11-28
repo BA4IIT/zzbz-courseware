@@ -59,6 +59,8 @@ contextBridge.exposeInMainWorld('zzbz', {
   },
   searchPolitics: (payload) => ipcRenderer.invoke('politics:search', payload),
   captureScreen: (options) => ipcRenderer.invoke('screen:capture', options),
+  openClockFloat: (options) => ipcRenderer.invoke('clock:float', options),
+  openAnnotationOverlay: () => ipcRenderer.invoke('annotation:open'),
   widget: {
     configure: (config) => ipcRenderer.invoke('widget:configure', config),
     hide: () => ipcRenderer.send('widget:hide')

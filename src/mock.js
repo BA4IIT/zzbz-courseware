@@ -105,8 +105,8 @@
     async checkUpdate() {
       return {
         ok: true,
-        currentVersion: '2.2.1',
-        latestVersion: '2.2.1',
+        currentVersion: '2.3.0',
+        latestVersion: '2.3.0',
         isLatest: true,
         updateAvailable: false,
         releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
@@ -140,6 +140,8 @@
     onUpdateProgress() { return () => {}; },
     async searchPolitics() { return { ok: false, error: '浏览器预览模式不能抓取网络新闻，请使用桌面程序。' }; },
     async captureScreen() { return { ok: false, error: '浏览器预览模式不能截取桌面。' }; },
+    async openClockFloat() { return { ok: false, error: '浏览器预览模式不支持悬浮时间。' }; },
+    async openAnnotationOverlay() { return { ok: false, error: '浏览器预览模式不支持上层批注。' }; },
     widget: { async configure() { return { ok: true }; }, hide() {} },
     onNavigate() { return () => {}; },
     browserCredentials: {
@@ -167,7 +169,7 @@
       return {
         ok: true,
         name: '枣庄八中集成桌面教学系统',
-        version: '2.2.1',
+        version: '2.3.0',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',

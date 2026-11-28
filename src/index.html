@@ -147,6 +147,10 @@
               <span class="nav-icon" data-icon="phone"></span>
               <span class="nav-text">手机投屏</span>
             </button>
+            <button type="button" class="nav-item" data-page="clock">
+              <span class="nav-icon" data-icon="clock"></span>
+              <span class="nav-text">北京时间</span>
+            </button>
             <button type="button" class="nav-item" data-page="timer">
               <span class="nav-icon" data-icon="clock"></span>
               <span class="nav-text">计时器</span>
@@ -646,6 +650,12 @@
                   <div class="camera-empty" id="cameraEmpty"><span data-icon="camera"></span><strong>正在寻找摄像头…</strong><p>连接 USB 摄像头或展台后，画面会自动出现在这里。</p></div>
                   <span class="camera-live-badge" id="cameraLiveBadge" hidden>LIVE</span>
                   <button type="button" class="stage-exit-fullscreen" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
+                  <div class="camera-side-tools">
+                    <button type="button" class="camera-side-tool" data-camera-focus="auto"><span data-icon="camera"></span><b>自动对焦</b></button>
+                    <button type="button" class="camera-side-tool" data-camera-focus="near"><span data-icon="plus"></span><b>对焦近</b></button>
+                    <button type="button" class="camera-side-tool" data-camera-focus="far"><span data-icon="minus"></span><b>对焦远</b></button>
+                    <button type="button" class="camera-side-tool" data-camera-reconnect><span data-icon="refresh"></span><b>启动/重连</b></button>
+                  </div>
                   <div class="fullscreen-toolbar" data-fullscreen-toolbar="camera">
                     <div class="fs-swatches">
                       <button type="button" class="drawing-color is-active" data-draw-color="#e35d5d" style="--swatch:#e35d5d"></button>
@@ -659,10 +669,8 @@
                     <button type="button" class="fs-tool" data-draw-clear><span data-icon="refresh"></span>清空</button>
                     <button type="button" class="fs-tool" data-camera-rotate-step><span data-icon="rotate"></span>旋转</button>
                     <button type="button" class="fs-tool" data-camera-mirror="x"><span data-icon="flip"></span>镜像</button>
-                    <button type="button" class="fs-tool" data-camera-focus="auto"><span data-icon="camera"></span>对焦</button>
                     <button type="button" class="fs-tool" data-camera-lock><span data-icon="lock"></span>锁定</button>
                     <button type="button" class="fs-tool" data-camera-photo><span data-icon="download"></span>拍照</button>
-                    <button type="button" class="fs-tool" data-camera-reconnect><span data-icon="refresh"></span>重连</button>
                     <label class="fs-width">笔粗<input type="range" data-brush-width="camera" min="1" max="18" value="4"></label>
                     <span class="fs-divider"></span>
                     <button type="button" class="fs-tool" data-zoom-action="out" data-board="camera">−</button>
@@ -1030,7 +1038,9 @@
               </div>
               <div class="timer-layout">
                 <section class="timer-card" id="timerCard">
+                  <div class="timer-style-tabs"><button type="button" class="is-active" data-timer-style="digital">数字</button><button type="button" data-timer-style="clock">钟表</button></div>
                   <div class="timer-display" id="timerDisplay">05:00</div>
+                  <canvas id="timerClockCanvas" class="timer-clock-canvas" hidden></canvas>
                   <div class="timer-controls">
                     <label class="timer-input"><span>分</span><input id="timerMinutes" type="number" min="0" max="180" value="5"></label>
                     <label class="timer-input"><span>秒</span><input id="timerSeconds" type="number" min="0" max="59" value="0"></label>
@@ -1250,8 +1260,12 @@
                   <h1>时事政治</h1>
                   <p>实时抓取权威媒体新闻，调用 DeepSeek 按高中政治教材章节筛选和归类，并生成课堂滚动弹幕。</p>
                 </div>
-                <div class="politics-head-badge"><span data-icon="news"></span><strong>实时</strong><small>权威新闻</small></div>
+                <div class="politics-head-actions">
+                  <button type="button" class="btn btn-light" id="politicsFullscreen"><span data-icon="monitor"></span>全屏</button>
+                  <div class="politics-head-badge"><span data-icon="news"></span><strong>实时</strong><small>权威新闻</small></div>
+                </div>
               </div>
+              <button type="button" class="stage-exit-fullscreen politics-exit" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
               <div class="politics-layout">
                 <section class="politics-card">
                   <div class="politics-danmaku" id="politicsDanmaku" hidden><div class="politics-danmaku-track" id="politicsDanmakuTrack"></div></div>
@@ -1275,6 +1289,39 @@
                   <p class="politics-note" id="politicsWarning"></p>
                 </aside>
               </div>
+            </section>
+
+            <!-- 北京时间 -->
+            <section class="page-panel" id="page-clock" data-panel="clock" hidden>
+              <div class="page-heading">
+                <div>
+                  <div class="page-eyebrow"><span></span> BEIJING STANDARD TIME</div>
+                  <h1>北京时间</h1>
+                  <p>显示中国标准时间（Asia/Shanghai），支持钟表/数字两种样式、全屏显示和桌面悬浮。</p>
+                </div>
+                <div class="clock-head-actions">
+                  <button type="button" class="btn btn-light" id="clockFloatButton"><span data-icon="monitor"></span>悬浮显示</button>
+                  <button type="button" class="btn btn-primary" id="clockFullscreen"><span data-icon="monitor"></span>全屏</button>
+                </div>
+              </div>
+              <section class="clock-card" id="clockCard">
+                <div class="clock-style-tabs"><button type="button" class="is-active" data-clock-style="clock">钟表</button><button type="button" data-clock-style="digital">数字</button></div>
+                <div class="clock-face">
+                  <div class="clock-analog" id="clockAnalog">
+                    <div class="clock-dial"><i class="clock-tick"></i></div>
+                    <div class="clock-hand clock-hour" id="clockHourHand"></div>
+                    <div class="clock-hand clock-minute" id="clockMinuteHand"></div>
+                    <div class="clock-hand clock-second" id="clockSecondHand"></div>
+                    <div class="clock-pin"></div>
+                  </div>
+                  <div class="clock-digital" id="clockDigital" hidden>
+                    <strong id="clockTime">--:--:--</strong>
+                    <span id="clockDate"></span>
+                  </div>
+                </div>
+                <div class="clock-meta"><span id="clockZone">中国标准时间 · UTC+8</span><span id="clockWeek"></span></div>
+                <button type="button" class="stage-exit-fullscreen clock-exit" data-exit-fullscreen><span data-icon="close"></span>退出全屏</button>
+              </section>
             </section>
 
             <!-- 环境音量 -->
@@ -1352,9 +1399,12 @@
                       <label class="question-field"><span>快捷键 7</span><select data-widget-slot="6"></select></label>
                       <label class="question-field"><span>快捷键 8</span><select data-widget-slot="7"></select></label>
                     </div>
-                    <label class="camera-clarity-field widget-size-field"><span>悬浮球大小 <b id="settingsWidgetSizeValue">260</b> px</span><input id="settingsWidgetSize" type="range" min="240" max="380" step="10" value="260"></label>
-                    <p class="settings-note">悬浮快捷键中间为八中校徽，点击外侧功能键可打开对应功能；可设置 1—8 个功能并调整快捷球大小，图标和文字不会随尺寸缩小；关闭上面的开关即可隐藏。</p>
+                    <label class="camera-clarity-field widget-size-field"><span>悬浮球大小 <b id="settingsWidgetSizeValue">220</b> px</span><input id="settingsWidgetSize" type="range" min="180" max="360" step="10" value="220"></label>
+                    <p class="settings-note">悬浮快捷键中间为八中校徽，点击外侧功能键可打开对应功能；可设置 1—8 个功能，快捷球大小会同时缩放背景、按钮和文字。点击中心校徽可只保留校徽，再次点击恢复。</p>
                   </div>
+                  <label class="camera-clarity-field admin-password-setting"><span>管理员密码（投票结果 / 随机点名后台）</span><input id="settingsAdminPassword" type="password" maxlength="40" autocomplete="new-password" placeholder="默认 6767"></label>
+                  <p class="settings-note">修改后请记住新密码；至少 4 个字符。</p>
+                  <label class="camera-clarity-field clock-float-setting"><span>悬浮时间大小 <b id="settingsClockFloatSizeValue">260</b> px</span><input id="settingsClockFloatSize" type="range" min="160" max="480" step="10" value="260"></label>
                 </div>
               </section>
             </section>
@@ -1427,7 +1477,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.2.1</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.3.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中集成桌面教学系统</strong><span>课件管理 · 课堂互动 · 教学工具</span></div>

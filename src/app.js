@@ -193,6 +193,7 @@
     students: '随机点名',
     phone: '手机投屏',
     timer: '课堂计时器',
+    clock: '北京时间',
     browser: '内置浏览器',
     camera: '展台',
     whiteboard: '白板',
@@ -200,8 +201,11 @@
     usb: 'U 盘检测',
     data: '数据管理'
   };
-  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics', 'volume', 'englishexam', 'englishweb', 'browser', 'camera', 'whiteboard', 'annotation', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer', 'settings']);
-  const ADMIN_PASSWORD = '6767';
+  const TOOL_PAGES = new Set(['vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics', 'volume', 'englishexam', 'englishweb', 'browser', 'camera', 'whiteboard', 'annotation', 'timetable', 'usb', 'vote', 'students', 'phone', 'timer', 'clock', 'settings']);
+  const DEFAULT_ADMIN_PASSWORD = '6767';
+  function adminPasswordValue() {
+    return String((state.settings && state.settings.adminPassword) || DEFAULT_ADMIN_PASSWORD);
+  }
   const VOTE_EXTRA_SUBJECTS = [
     { id: 'music', name: '音乐', short: '音', color: '#c56f9e' },
     { id: 'pe', name: '体育', short: '体', color: '#2f9b78' },
@@ -482,7 +486,10 @@
     politics: { bookId: '', chapter: '', days: 7, loading: false, items: [], warning: '', aiUsed: false, rangeFrom: '', rangeTo: '' },
     volume: { stream: null, context: null, analyser: null, timer: 0, running: false, db: 0, peak: 0, scene: 'study' },
     englishExam: { bookId: '', chapter: '', type: '阅读理解', count: 5, loading: false, result: '' },
-    timer: { total: 300, remaining: 300, running: false, endAt: 0, interval: 0, lastBeep: 0 },
+    timer: { total: 300, remaining: 300, running: false, endAt: 0, interval: 0, lastBeep: 0, style: 'digital' },
+    clockStyle: 'clock',
+    clockTicker: 0,
+    lastPickedNames: [],
     updateChecking: false,
     updateDownloading: false,
     updateInfo: null,
@@ -1263,7 +1270,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '2.2.1'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.3.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1695,6 +1702,7 @@
     { key: 'students', label: '随机点名' },
     { key: 'phone', label: '手机投屏' },
     { key: 'timer', label: '计时器' },
+    { key: 'clock', label: '北京时间' },
     { key: 'volume', label: '环境音量' },
     { key: 'englishexam', label: '英语往年题' },
     { key: 'englishweb', label: '英语网' }
@@ -1726,7 +1734,7 @@
     return {
       enabled: source.enabled !== false,
       items,
-      size: Math.max(240, Math.min(380, Math.round(Number(source.size) || 260)))
+      size: Math.max(180, Math.min(360, Math.round(Number(source.size) || 220)))
     };
   }
 
@@ -1953,20 +1961,22 @@
     const width = Math.max(1, Math.round((canvas.clientWidth || 1) * dpr));
     const height = Math.max(1, Math.round((canvas.clientHeight || 1) * dpr));
     if (canvas.width === width && canvas.height === height) return;
-    const snapshot = canvas.width > 1 && canvas.height > 1 ? canvas.toDataURL('image/png') : '';
+    // 使用离屏画布同步保存旧内容，避免缩放时等待 dataURL 图片解码出现“消失又出现”。
+    const oldWidth = canvas.width;
+    const oldHeight = canvas.height;
+    const backup = document.createElement('canvas');
+    backup.width = oldWidth;
+    backup.height = oldHeight;
+    if (oldWidth > 1 && oldHeight > 1) backup.getContext('2d').drawImage(canvas, 0, 0);
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (snapshot) {
-      const image = new Image();
-      image.onload = () => {
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
-      };
-      image.src = snapshot;
+    if (oldWidth > 1 && oldHeight > 1) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(backup, 0, 0, width, height);
+      ctx.restore();
     }
   }
 
@@ -2603,9 +2613,8 @@
   }
 
   function renderAnnotation() {
-    initDrawingBoard(drawingState.annotation);
-    requestAnimationFrame(() => resizeDrawingCanvas(drawingState.annotation));
-    captureAnnotationScreen();
+    // 批注已改为独立透明置顶窗口，直接在应用/桌面上层绘制。
+    if (api.openAnnotationOverlay) api.openAnnotationOverlay();
   }
 
   async function saveAnnotationImage() {
@@ -3426,6 +3435,12 @@
     });
     const politicsSearchButton = $('#politicsSearchButton');
     if (politicsSearchButton) politicsSearchButton.addEventListener('click', searchPolitics);
+    const politicsFullscreen = $('#politicsFullscreen');
+    if (politicsFullscreen) politicsFullscreen.addEventListener('click', () => {
+      const panel = $('#page-politics');
+      if (panel && !document.fullscreenElement) panel.requestFullscreen?.().catch(() => showToast('无法进入全屏', { type: 'warn' }));
+      else if (document.fullscreenElement) document.exitFullscreen?.();
+    });
 
     const volumeStart = $('#volumeStart');
     if (volumeStart) volumeStart.addEventListener('click', startVolume);
@@ -3461,6 +3476,11 @@
     if (widgetSizeInput) widgetSizeInput.addEventListener('input', () => {
       const label = $('#settingsWidgetSizeValue');
       if (label) label.textContent = widgetSizeInput.value;
+    });
+    const clockFloatSizeInput = $('#settingsClockFloatSize');
+    if (clockFloatSizeInput) clockFloatSizeInput.addEventListener('input', () => {
+      const label = $('#settingsClockFloatSizeValue');
+      if (label) label.textContent = clockFloatSizeInput.value;
     });
 
     const settingsSaveKey = $('#settingsSaveKey');
@@ -3649,6 +3669,24 @@
     if (timerStart) timerStart.addEventListener('click', timerStartPause);
     const timerResetButton = $('#timerReset');
     if (timerResetButton) timerResetButton.addEventListener('click', timerReset);
+    $$('[data-timer-style]').forEach((button) => button.addEventListener('click', () => {
+      state.timer.style = button.dataset.timerStyle === 'clock' ? 'clock' : 'digital';
+      renderTimer();
+    }));
+    $$('[data-clock-style]').forEach((button) => button.addEventListener('click', () => {
+      state.clockStyle = button.dataset.clockStyle === 'digital' ? 'digital' : 'clock';
+      renderClock();
+    }));
+    const clockFullscreen = $('#clockFullscreen');
+    if (clockFullscreen) clockFullscreen.addEventListener('click', () => {
+      const card = $('#clockCard');
+      if (card && !document.fullscreenElement) card.requestFullscreen?.().catch(() => showToast('无法进入全屏', { type: 'warn' }));
+      else if (document.fullscreenElement) document.exitFullscreen?.();
+    });
+    const clockFloatButton = $('#clockFloatButton');
+    if (clockFloatButton) clockFloatButton.addEventListener('click', openFloatingClock);
+    startClockTicker();
+
     const timerFullscreen = $('#timerFullscreen');
     if (timerFullscreen) timerFullscreen.addEventListener('click', () => {
       const card = $('#timerCard');
@@ -4587,6 +4625,12 @@
     const widget = widgetSettings();
     const widgetEnabled = $('#settingsWidgetEnabled');
     if (widgetEnabled) widgetEnabled.checked = widget.enabled;
+    const adminPassword = $('#settingsAdminPassword');
+    if (adminPassword) adminPassword.value = adminPasswordValue();
+    const clockFloatSize = $('#settingsClockFloatSize');
+    if (clockFloatSize) clockFloatSize.value = String(Number(state.settings.clockFloatSize) || 260);
+    const clockFloatSizeValue = $('#settingsClockFloatSizeValue');
+    if (clockFloatSizeValue) clockFloatSizeValue.textContent = String(Number(state.settings.clockFloatSize) || 260);
     const widgetSize = $('#settingsWidgetSize');
     if (widgetSize) widgetSize.value = String(widget.size);
     const widgetSizeValue = $('#settingsWidgetSizeValue');
@@ -4609,6 +4653,16 @@
     const features = {};
     $$('[data-feature-setting]').forEach((input) => { features[input.dataset.featureSetting] = input.checked; });
     state.settings.features = normalizeFeatureSettings(features);
+    state.settings.clockFloatSize = Math.max(160, Math.min(480, Math.round(Number($('#settingsClockFloatSize')?.value) || 260)));
+    const passwordInput = $('#settingsAdminPassword');
+    if (passwordInput) {
+      const password = String(passwordInput.value || '').trim();
+      if (password && password.length < 4) {
+        showToast('管理员密码至少需要 4 个字符。', { type: 'warn' });
+        return;
+      }
+      if (password) state.settings.adminPassword = password;
+    }
     const widgetItems = $$('[data-widget-slot]')
       .filter((select) => select.value)
       .map((select) => ({
@@ -4931,9 +4985,128 @@
     return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
   }
 
+  /* ---------------- 北京时间 ---------------- */
+
+  function beijingParts() {
+    const formatter = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', weekday: 'long'
+    });
+    const parts = {};
+    formatter.formatToParts(new Date()).forEach((part) => { parts[part.type] = part.value; });
+    return {
+      year: parts.year, month: parts.month, day: parts.day,
+      hour: Number(parts.hour) % 24, minute: Number(parts.minute), second: Number(parts.second),
+      weekday: parts.weekday || ''
+    };
+  }
+
+  function renderClock() {
+    const time = beijingParts();
+    const timeText = `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}:${String(time.second).padStart(2, '0')}`;
+    const digital = $('#clockDigital');
+    const analog = $('#clockAnalog');
+    if (digital) digital.hidden = state.clockStyle !== 'digital';
+    if (analog) analog.hidden = state.clockStyle !== 'clock';
+    const timeNode = $('#clockTime');
+    if (timeNode) timeNode.textContent = timeText;
+    const dateNode = $('#clockDate');
+    if (dateNode) dateNode.textContent = `${time.year}年${time.month}月${time.day}日`;
+    const weekNode = $('#clockWeek');
+    if (weekNode) weekNode.textContent = time.weekday;
+    const hourHand = $('#clockHourHand');
+    const minuteHand = $('#clockMinuteHand');
+    const secondHand = $('#clockSecondHand');
+    if (hourHand) hourHand.style.transform = `translateX(-50%) rotate(${(time.hour % 12) * 30 + time.minute * 0.5}deg)`;
+    if (minuteHand) minuteHand.style.transform = `translateX(-50%) rotate(${time.minute * 6 + time.second * 0.1}deg)`;
+    if (secondHand) secondHand.style.transform = `translateX(-50%) rotate(${time.second * 6}deg)`;
+    $$('[data-clock-style]').forEach((button) => button.classList.toggle('is-active', button.dataset.clockStyle === state.clockStyle));
+  }
+
+  function startClockTicker() {
+    if (state.clockTicker) return;
+    renderClock();
+    state.clockTicker = window.setInterval(() => {
+      if (state.page === 'clock') renderClock();
+    }, 1000);
+  }
+
+  async function openFloatingClock() {
+    if (!api.openClockFloat) {
+      showToast('当前版本不支持悬浮时间。', { type: 'warn' });
+      return;
+    }
+    const result = await api.openClockFloat({
+      style: state.clockStyle,
+      size: Number(state.settings.clockFloatSize) || 260
+    });
+    if (result && result.ok === false) showToast(result.error || '无法打开悬浮时间', { type: 'warn' });
+    else showToast('北京时间已悬浮显示，可拖动窗口调整位置。', { type: 'success' });
+  }
+
+  function drawTimerClock() {
+    const canvas = $('#timerClockCanvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const size = Math.max(180, Math.min(rect.width || 320, rect.height || 320));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+    const context = canvas.getContext('2d');
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, size, size);
+    const center = size / 2;
+    const radius = center - 10;
+    context.beginPath();
+    context.arc(center, center, radius, 0, Math.PI * 2);
+    context.fillStyle = '#ffffff';
+    context.fill();
+    context.lineWidth = 3;
+    context.strokeStyle = '#cfe5f4';
+    context.stroke();
+    for (let i = 0; i < 60; i += 1) {
+      const angle = (i / 60) * Math.PI * 2;
+      const inner = i % 5 === 0 ? radius - 12 : radius - 6;
+      context.beginPath();
+      context.moveTo(center + Math.sin(angle) * inner, center - Math.cos(angle) * inner);
+      context.lineTo(center + Math.sin(angle) * (radius - 2), center - Math.cos(angle) * (radius - 2));
+      context.lineWidth = i % 5 === 0 ? 2 : 1;
+      context.strokeStyle = i % 5 === 0 ? '#6e9dbd' : '#d8e8f4';
+      context.stroke();
+    }
+    const remaining = Math.max(0, state.timer.remaining);
+    const secondAngle = (remaining % 60) / 60 * Math.PI * 2;
+    const minuteAngle = (remaining % 3600) / 3600 * Math.PI * 2;
+    const hourAngle = (remaining % 43200) / 43200 * Math.PI * 2;
+    const hand = (angle, length, width, color) => {
+      context.beginPath();
+      context.moveTo(center, center);
+      context.lineTo(center + Math.sin(angle) * length, center - Math.cos(angle) * length);
+      context.lineWidth = width;
+      context.lineCap = 'round';
+      context.strokeStyle = color;
+      context.stroke();
+    };
+    hand(hourAngle, radius * 0.5, 7, '#315a78');
+    hand(minuteAngle, radius * 0.72, 4.5, '#3f87b3');
+    hand(secondAngle, radius * 0.82, 2, '#d26464');
+    context.beginPath();
+    context.arc(center, center, 6, 0, Math.PI * 2);
+    context.fillStyle = '#2f7fb5';
+    context.fill();
+  }
+
   function renderTimer() {
     const display = $('#timerDisplay');
     if (display) display.textContent = timerText(state.timer.remaining);
+    const clockCanvas = $('#timerClockCanvas');
+    if (display) display.hidden = state.timer.style === 'clock';
+    if (clockCanvas) {
+      clockCanvas.hidden = state.timer.style !== 'clock';
+      if (state.timer.style === 'clock') drawTimerClock();
+    }
+    $$('[data-timer-style]').forEach((button) => button.classList.toggle('is-active', button.dataset.timerStyle === state.timer.style));
     const minutes = $('#timerMinutes');
     const seconds = $('#timerSeconds');
     if (minutes && document.activeElement !== minutes) minutes.value = String(Math.floor(state.timer.total / 60));
@@ -5170,7 +5343,7 @@
   function confirmAdminPassword() {
     const input = $('#adminPasswordInput');
     if (!input) return;
-    if (input.value !== ADMIN_PASSWORD) {
+    if (input.value !== adminPasswordValue()) {
       input.value = '';
       input.focus();
       showToast('管理员密码不正确。', { type: 'error' });
@@ -5355,7 +5528,9 @@
       if (ticks >= 18) {
         window.clearInterval(state.studentSpinTimer);
         state.studentSpinTimer = 0;
-        const pool = [...state.students];
+        const previousNames = new Set(String(state.lastPickedStudent || '').split('、').filter(Boolean));
+        let pool = state.students.filter((student) => !previousNames.has(student.name));
+        if (pool.length < count) pool = [...state.students];
         const picked = [];
         for (let index = 0; index < count && pool.length; index += 1) {
           const student = weightedStudentPick(pool);
@@ -6764,6 +6939,10 @@
     clearTimeout(searchTimer);
     searchTimer = 0;
     if (!PAGE_TITLES[page]) page = 'library';
+    if (page === 'annotation' && api.openAnnotationOverlay) {
+      api.openAnnotationOverlay();
+      return;
+    }
     if (page !== 'library' && !['data'].includes(page) && !featuresAllows(page)) page = 'library';
     if (state.page === 'camera' && page !== 'camera') stopCamera();
     if (state.page === 'phone' && page !== 'phone') {
@@ -6801,6 +6980,7 @@
     if (page === 'settings') renderSettings();
     if (page === 'phone') renderPhone();
     if (page === 'timer') renderTimer();
+    if (page === 'clock') renderClock();
     if (page === 'data') renderData();
     if (!options || options.scroll !== false) ui.mainScroll.scrollTop = 0;
   }

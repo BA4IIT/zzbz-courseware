@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Tray, nativeImage, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage, desktopCapturer } = require('electron');
 const archiver = require('archiver');
 const XLSX = require('xlsx');
 const mammoth = require('mammoth');
@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.3.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -673,7 +673,7 @@ function normalizeWordGameScores(raw) {
 const FEATURE_KEYS = [
   'vocab', 'questions', 'ai', 'wordgame', 'graph', 'calculator', 'politics',
   'camera', 'whiteboard', 'annotation', 'browser', 'timetable', 'usb',
-  'vote', 'students', 'phone', 'timer', 'volume', 'englishexam', 'englishweb'
+  'vote', 'students', 'phone', 'timer', 'clock', 'volume', 'englishexam', 'englishweb'
 ];
 
 const DEFAULT_WIDGET_ITEMS = [
@@ -702,7 +702,7 @@ function normalizeWidgetSettings(raw) {
   return {
     enabled: source.enabled !== false,
     items,
-    size: Math.max(240, Math.min(380, Math.round(Number(source.size) || 260)))
+    size: Math.max(180, Math.min(360, Math.round(Number(source.size) || 220)))
   };
 }
 
@@ -735,6 +735,8 @@ function normalizeLibrary(payload) {
         fontSize: Math.max(12, Math.min(30, Math.floor(Number(rawSettings.danmaku && rawSettings.danmaku.fontSize) || 18)))
       },
       features: normalizeFeatureSettings(rawSettings.features),
+      adminPassword: normalizeString(rawSettings.adminPassword, 40) || '6767',
+      clockFloatSize: Math.max(160, Math.min(480, Math.round(Number(rawSettings.clockFloatSize) || 260))),
       widget: normalizeWidgetSettings(rawSettings.widget)
     },
     items,
@@ -891,7 +893,11 @@ async function askDeepSeek(payload) {
 
 let phoneCast = null;
 let widgetWindow = null;
-let widgetConfig = { enabled: false, items: [], size: 260 };
+let clockWindow = null;
+let annotationWindow = null;
+let tray = null;
+let isQuitting = false;
+let widgetConfig = { enabled: false, items: [], size: 220 };
 
 function getLanAddress() {
   const candidates = [];
@@ -1318,14 +1324,79 @@ function normalizeWidgetConfig(raw) {
   return {
     enabled: Boolean(source.enabled),
     items,
-    size: Math.max(240, Math.min(380, Math.round(Number(source.size) || 260)))
+    size: Math.max(180, Math.min(360, Math.round(Number(source.size) || 220)))
   };
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (widgetConfig.enabled && widgetConfig.items.length) applyWidgetConfig(widgetConfig);
+}
+
+function openAnnotationOverlay() {
+  if (annotationWindow && !annotationWindow.isDestroyed()) {
+    annotationWindow.show();
+    annotationWindow.focus();
+    return;
+  }
+  const display = screen.getPrimaryDisplay();
+  annotationWindow = new BrowserWindow({
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: display.bounds.width,
+    height: display.bounds.height,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'annotation-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  annotationWindow.setAlwaysOnTop(true, 'screen-saver');
+  annotationWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  annotationWindow.loadFile(path.join(__dirname, 'src', 'annotation-overlay.html')).catch(() => {});
+  annotationWindow.once('ready-to-show', () => annotationWindow.show());
+  annotationWindow.on('closed', () => { annotationWindow = null; });
+}
+
+function createTray() {
+  if (tray && !tray.isDestroyed()) return;
+  try {
+    const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png'));
+    tray = new Tray(icon.resize({ width: 32, height: 32 }));
+    tray.setToolTip(APP_NAME);
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: '显示主界面', click: showMainWindow },
+      { label: '隐藏到托盘', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } },
+      { type: 'separator' },
+      { label: '退出软件', click: () => { isQuitting = true; app.quit(); } }
+    ]));
+    tray.on('double-click', showMainWindow);
+    tray.on('click', showMainWindow);
+  } catch (error) {
+    console.error('托盘创建失败：', error);
+  }
 }
 
 function createWidgetWindow() {
   if (widgetWindow && !widgetWindow.isDestroyed()) return widgetWindow;
   const display = screen.getPrimaryDisplay();
-  const size = Math.max(240, Math.min(380, Math.round(Number(widgetConfig.size) || 260)));
+  const size = Math.max(180, Math.min(360, Math.round(Number(widgetConfig.size) || 220)));
   widgetWindow = new BrowserWindow({
     width: size,
     height: size,
@@ -2146,11 +2217,72 @@ function registerIpc() {
   });
   ipcMain.on('widget:action', (_event, page) => {
     const valid = normalizeString(page, 40);
+    if (valid === 'annotation') {
+      openAnnotationOverlay();
+      return;
+    }
     if (valid) showMainPage(valid);
   });
   ipcMain.on('widget:hide', () => {
     if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
   });
+  ipcMain.handle('annotation:open', async () => {
+    openAnnotationOverlay();
+    return { ok: true };
+  });
+  ipcMain.on('annotation:close', () => {
+    if (annotationWindow && !annotationWindow.isDestroyed()) annotationWindow.close();
+  });
+  ipcMain.handle('annotation:save', async (_event, dataUrl) => {
+    const match = typeof dataUrl === 'string' ? dataUrl.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/) : null;
+    if (!match) return { ok: false, error: '批注图片数据无效' };
+    const result = await dialog.showSaveDialog(annotationWindow || mainWindow, {
+      title: '保存批注',
+      defaultPath: path.join(app.getPath('pictures'), `批注_${Date.now()}.png`),
+      filters: [{ name: 'PNG 图片', extensions: ['png'] }]
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    try {
+      await fsp.writeFile(result.filePath, Buffer.from(match[1], 'base64'));
+      return { ok: true, filePath: result.filePath };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clock:float', async (_event, options) => {
+    try {
+      const style = options && options.style === 'digital' ? 'digital' : 'clock';
+      const size = Math.max(160, Math.min(480, Math.round(Number(options && options.size) || 260)));
+      if (clockWindow && !clockWindow.isDestroyed()) clockWindow.destroy();
+      const display = screen.getPrimaryDisplay();
+      const width = size;
+      const height = style === 'digital' ? Math.round(size * 0.52) : size;
+      clockWindow = new BrowserWindow({
+        width, height,
+        x: display.workArea.x + display.workArea.width - width - 24,
+        y: display.workArea.y + 60,
+        frame: false,
+        transparent: false,
+        resizable: false,
+        movable: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        hasShadow: true,
+        backgroundColor: '#eef8ff',
+        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false }
+      });
+      clockWindow.setAlwaysOnTop(true, 'screen-saver');
+      clockWindow.loadFile(path.join(__dirname, 'src', 'floating-time.html'), {
+        query: { style, size: String(size) }
+      }).catch(() => {});
+      clockWindow.on('closed', () => { clockWindow = null; });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('screen:capture', async (_event, options) => {
     const hideWindow = Boolean(options && options.hideWindow);
     let hidden = false;
@@ -2258,14 +2390,25 @@ function createWindow() {
   mainWindow.on('unmaximize', sendMaximizedState);
   mainWindow.on('enter-full-screen', sendMaximizedState);
   mainWindow.on('leave-full-screen', sendMaximizedState);
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    mainWindow.hide();
+    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
+    if (annotationWindow && !annotationWindow.isDestroyed()) annotationWindow.close();
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
-    // 悬浮球是独立窗口；主窗口关闭时必须一起销毁，否则会阻止应用退出。
-    if (widgetWindow && !widgetWindow.isDestroyed()) {
-      widgetWindow.destroy();
-      widgetWindow = null;
+    if (isQuitting) {
+      if (widgetWindow && !widgetWindow.isDestroyed()) {
+        widgetWindow.destroy();
+        widgetWindow = null;
+      }
+      if (clockWindow && !clockWindow.isDestroyed()) {
+        clockWindow.destroy();
+        clockWindow = null;
+      }
     }
-    app.quit();
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -2390,13 +2533,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      createWindow();
-      return;
-    }
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
+    showMainWindow();
   });
 
   app.whenReady().then(() => {
@@ -2404,6 +2541,7 @@ if (!gotLock) {
     registerProtocol();
     registerIpc();
     createWindow();
+    createTray();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
@@ -2419,14 +2557,27 @@ if (!gotLock) {
   });
 
   app.on('before-quit', () => {
+    isQuitting = true;
     stopPhoneCast();
     if (widgetWindow && !widgetWindow.isDestroyed()) {
       widgetWindow.destroy();
       widgetWindow = null;
     }
+    if (clockWindow && !clockWindow.isDestroyed()) {
+      clockWindow.destroy();
+      clockWindow = null;
+    }
+    if (annotationWindow && !annotationWindow.isDestroyed()) {
+      annotationWindow.destroy();
+      annotationWindow = null;
+    }
+    if (tray && !tray.isDestroyed()) {
+      tray.destroy();
+      tray = null;
+    }
   });
 
   app.on('window-all-closed', () => {
-    app.quit();
+    if (isQuitting) app.quit();
   });
 }
