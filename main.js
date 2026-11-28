@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage, desktopCapturer } = require('electron');
 const archiver = require('archiver');
@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.2.1';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -1376,7 +1376,12 @@ function applyWidgetConfig(raw) {
     const size = widgetConfig.size;
     const [currentWidth, currentHeight] = win.getSize();
     if (currentWidth !== size || currentHeight !== size) {
+      // Windows 下 resizable:false 的窗口可能只能放大不能缩小，临时恢复可调尺寸。
+      const wasResizable = win.isResizable();
+      if (!wasResizable) win.setResizable(true);
+      win.setMinimumSize(200, 200);
       win.setSize(size, size);
+      if (!wasResizable) win.setResizable(false);
       const display = screen.getPrimaryDisplay();
       win.setPosition(
         display.workArea.x + display.workArea.width - size - 18,

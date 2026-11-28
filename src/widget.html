@@ -7,8 +7,8 @@
   <style>
     :root {
       --widget-size: 260px;
-      --slot-size: calc(var(--widget-size) * 0.20);
-      --slot-radius: calc(var(--widget-size) * 0.34);
+      --slot-size: 52px;
+      --slot-radius: calc(var(--widget-size) * 0.32);
       --slot-angle: -90deg;
       --slot-counter-angle: 90deg;
       --ink: #244f6d;
@@ -50,8 +50,8 @@
       top: 50%;
       display: grid;
       place-items: center;
-      width: calc(var(--widget-size) * 0.28);
-      height: calc(var(--widget-size) * 0.28);
+      width: 76px;
+      height: 76px;
       transform: translate(-50%, -50%);
       overflow: hidden;
       background: #fff;
@@ -104,16 +104,16 @@
     .widget-slot .slot-mark {
       display: grid;
       place-items: center;
-      width: calc(var(--widget-size) * 0.09);
-      height: calc(var(--widget-size) * 0.09);
+      width: 24px;
+      height: 24px;
       font-family: Georgia, "Times New Roman", serif;
-      font-size: calc(var(--widget-size) * 0.052);
+      font-size: 14px;
       font-weight: 700;
       color: #2f7fb5;
       background: #edf8ff;
       border-radius: 50%;
     }
-    .widget-slot .slot-label { font-size: calc(var(--widget-size) * 0.034); font-weight: 600; white-space: nowrap; }
+    .widget-slot .slot-label { font-size: 9px; font-weight: 600; white-space: nowrap; }
     .widget-close {
       position: absolute;
       top: 6px;
@@ -172,6 +172,7 @@
   <script>
     (() => {
       const marks = { whiteboard: '白', camera: '展', annotation: '批', browser: '网', graph: 'ƒ', calculator: '算', politics: '闻', timer: '时', volume: '音', englishexam: '英', students: '点', vote: '票' };
+      const shortLabels = { whiteboard: '白板', camera: '展台', annotation: '批注', englishweb: '英语', graph: '函数', calculator: '计算器', volume: '音量', browser: '浏览器', timer: '计时', politics: '时事', englishexam: '往年题', students: '点名', vote: '投票', phone: '投屏', ai: 'AI', wordgame: '单词', vocab: '3500' };
       const slots = Array.from(document.querySelectorAll('.widget-slot'));
       const applyConfig = (config) => {
         const items = config && Array.isArray(config.items) ? config.items : [];
@@ -184,7 +185,7 @@
           if (!item) return;
           slot.dataset.page = item.page;
           slot.querySelector('.slot-mark').textContent = marks[item.page] || (item.label || '·').slice(0, 1);
-          slot.querySelector('.slot-label').textContent = item.label || item.page;
+          slot.querySelector('.slot-label').textContent = shortLabels[item.page] || item.label || item.page;
           slot.title = item.label || item.page;
           visible.push(slot);
         });

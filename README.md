@@ -23,7 +23,7 @@ GitHub 仓库：<https://github.com/BA4IIT/zzbz-courseware>
 - **学科提问**：课代表自行发布待讲题目并填写票数，同学可投票 +1，支持按票数排序、按学科筛选、标记已讲解。
 - **AI 解答**：接入 DeepSeek API，支持上传 PDF/Word/Excel/TXT 文件、选择 DeepSeek Chat / Reasoner 与推理等级，并可进行 AI 翻译和 AI 图片转文字。
 - **通用设置**：统一设置所有 AI 功能使用的 DeepSeek API Key、默认模型、推理等级、时事政治弹幕、各功能显隐和桌面悬浮快捷键。
-- **桌面悬浮快捷键**：电脑右下角圆环快捷球，中间为校徽，可设置 1—8 个功能并调整悬浮球大小（240—380 px，默认白板/展台/批注）；可在通用设置中更换或关闭，关闭软件时快捷球自动退出。
+- **桌面悬浮快捷键**：电脑右下角圆环快捷球，中间为校徽，可设置 1—8 个功能并调整悬浮球大小（240—380 px，只调整外圈，图标文字不缩放，默认白板/展台/批注）；可在通用设置中更换或关闭，关闭软件时快捷球自动退出。
 - **屏幕批注**：截取当前屏幕作为背景，用画笔圈画批注并保存 PNG。
 - **英语往年题**：按外研版课本、章节和题型，调用 DeepSeek 整理题目，标注题目类型和来源说明。
 - **英语网**：内置浏览器打开 `https://cybertamin.xin/lang/en/`，支持后退、前进、刷新、回首页和系统浏览器打开。
@@ -59,7 +59,7 @@ GitHub 仓库：<https://github.com/BA4IIT/zzbz-courseware>
 
 最新安装包与使用说明见 **[Releases](https://github.com/BA4IIT/zzbz-courseware/releases/latest)**：
 
-- 安装包：`zzbz-courseware-2.2.0-setup.exe`
+- 安装包：`zzbz-courseware-2.2.1-setup.exe`
 - 使用说明：`usage.txt`
 
 安装包约 130 MB，因超过 GitHub 单文件 100 MB 限制，作为 Release 附件发布，不进入 Git 历史。安装程序支持自选安装目录，并在安装完成后创建桌面和开始菜单快捷方式。

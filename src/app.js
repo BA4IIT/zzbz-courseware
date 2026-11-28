@@ -1263,7 +1263,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '2.2.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.2.1'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -6630,7 +6630,7 @@
           <ul class="help-list">
             <li><strong>AI 解答</strong>：填写并加密保存 DeepSeek API Key，可选择模型/推理等级、上传附件、AI 翻译和图片转文字。</li>
             <li><strong>通用设置</strong>：统一设置 AI API Key、模型/推理等级、时事政治弹幕、功能显隐和桌面悬浮快捷球。</li>
-            <li><strong>桌面悬浮快捷键 / 批注</strong>：右下角校徽圆环快捷球可配置 1—8 个功能、调整大小（默认白板、展台、批注）；关闭软件时快捷球同步退出。</li>
+            <li><strong>桌面悬浮快捷键 / 批注</strong>：右下角校徽圆环快捷球可配置 1—8 个功能、调整外圈大小；图标文字和主界面不缩放；关闭软件时快捷球同步退出。</li>
             <li><strong>单词天天练</strong>：高中英语 3500 词库随机出题，英译汉/汉译英四选一，支持昵称通关排名。</li>
             <li><strong>函数图像 / 科学计算器</strong>：绘制多条函数曲线并缩放、拖动，鼠标靠近显示坐标；计算器支持三角函数、对数、幂等。</li>
             <li><strong>环境音量 / 英语往年题 / 英语网</strong>：麦克风检测自习/晨读声级；按外研版课本章节和题型用 AI 整理题目；英语网内置打开 cybertamin.xin/lang/en/。</li>
