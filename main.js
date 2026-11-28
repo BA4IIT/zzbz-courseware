@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, screen, session, safeStorage, desktopCapturer } = require('electron');
 const archiver = require('archiver');
@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -693,13 +693,17 @@ function normalizeWidgetSettings(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const sourceItems = Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS;
   const items = sourceItems
-    .slice(0, 5)
+    .slice(0, 8)
     .map((item) => ({
       page: normalizeString(item && item.page, 40),
       label: normalizeString(item && item.label, 12)
     }))
     .filter((item) => item.page);
-  return { enabled: source.enabled !== false, items };
+  return {
+    enabled: source.enabled !== false,
+    items,
+    size: Math.max(240, Math.min(380, Math.round(Number(source.size) || 260)))
+  };
 }
 
 function normalizeLibrary(payload) {
@@ -887,7 +891,7 @@ async function askDeepSeek(payload) {
 
 let phoneCast = null;
 let widgetWindow = null;
-let widgetConfig = { enabled: false, items: [] };
+let widgetConfig = { enabled: false, items: [], size: 260 };
 
 function getLanAddress() {
   const candidates = [];
@@ -1305,19 +1309,23 @@ async function analyzePoliticalNews(items, chapters, model, reasoning) {
 function normalizeWidgetConfig(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const items = (Array.isArray(source.items) ? source.items : [])
-    .slice(0, 5)
+    .slice(0, 8)
     .map((item) => ({
       page: normalizeString(item && item.page, 40),
       label: normalizeString(item && item.label, 12)
     }))
     .filter((item) => item.page);
-  return { enabled: Boolean(source.enabled), items };
+  return {
+    enabled: Boolean(source.enabled),
+    items,
+    size: Math.max(240, Math.min(380, Math.round(Number(source.size) || 260)))
+  };
 }
 
 function createWidgetWindow() {
   if (widgetWindow && !widgetWindow.isDestroyed()) return widgetWindow;
   const display = screen.getPrimaryDisplay();
-  const size = 250;
+  const size = Math.max(240, Math.min(380, Math.round(Number(widgetConfig.size) || 260)));
   widgetWindow = new BrowserWindow({
     width: size,
     height: size,
@@ -1364,6 +1372,18 @@ function applyWidgetConfig(raw) {
     return;
   }
   const win = createWidgetWindow();
+  if (win && !win.isDestroyed()) {
+    const size = widgetConfig.size;
+    const [currentWidth, currentHeight] = win.getSize();
+    if (currentWidth !== size || currentHeight !== size) {
+      win.setSize(size, size);
+      const display = screen.getPrimaryDisplay();
+      win.setPosition(
+        display.workArea.x + display.workArea.width - size - 18,
+        display.workArea.y + display.workArea.height - size - 18
+      );
+    }
+  }
   const send = () => {
     if (win && !win.isDestroyed()) win.webContents.send('widget:config', widgetConfig);
   };

@@ -1263,7 +1263,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '2.1.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.2.0'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -1717,13 +1717,17 @@
     const source = raw && typeof raw === 'object' ? raw : {};
     const sourceItems = Array.isArray(source.items) ? source.items : DEFAULT_WIDGET_ITEMS;
     const items = sourceItems
-      .slice(0, 5)
+      .slice(0, 8)
       .map((item) => ({
         page: String(item && item.page || ''),
         label: String(item && item.label || '').slice(0, 12)
       }))
       .filter((item) => item.page);
-    return { enabled: source.enabled !== false, items };
+    return {
+      enabled: source.enabled !== false,
+      items,
+      size: Math.max(240, Math.min(380, Math.round(Number(source.size) || 260)))
+    };
   }
 
   function featureSettings() {
@@ -1756,7 +1760,7 @@
     const items = widget.items
       .filter((item) => featuresAllows(item.page))
       .map((item) => ({ page: item.page, label: item.label || pageLabel(item.page) }));
-    await api.widget.configure({ enabled: widget.enabled && items.length > 0, items }).catch(() => {});
+    await api.widget.configure({ enabled: widget.enabled && items.length > 0, items, size: widget.size }).catch(() => {});
   }
 
   function featuresAllows(page) {
@@ -1876,10 +1880,27 @@
 
   function applyBoardTransform(board) {
     const content = document.getElementById(board.contentId);
-    if (content) content.style.transform = `translate(${board.panX}px, ${board.panY}px) scale(${board.zoom})`;
+    if (content) {
+      // 白板缩小后临时把内容层放大到 100/zoom，缩放后仍铺满整个画板，
+      // 否则四周会露出舞台背景，鼠标/手指落下去无法继续书写。
+      if (board.name === 'whiteboard' && board.zoom < 1) {
+        content.style.width = `${100 / board.zoom}%`;
+        content.style.height = `${100 / board.zoom}%`;
+        content.style.transformOrigin = '0 0';
+      } else {
+        content.style.width = '';
+        content.style.height = '';
+        content.style.transformOrigin = '';
+      }
+      content.style.transform = `translate(${board.panX}px, ${board.panY}px) scale(${board.zoom})`;
+    }
     $$(`[data-zoom-label="${board.name}"]`).forEach((label) => {
       label.textContent = `${Math.round(board.zoom * 100)}%`;
     });
+  }
+
+  function maxBoardZoom(board) {
+    return board.name === 'camera' ? 5 : 3;
   }
 
   function changeBoardZoom(board, action) {
@@ -1889,7 +1910,7 @@
       board.panY = 0;
     } else {
       const next = board.zoom + (action === 'in' ? 0.2 : -0.2);
-      board.zoom = Math.max(0.5, Math.min(3, Number(next.toFixed(2))));
+      board.zoom = Math.max(0.5, Math.min(maxBoardZoom(board), Number(next.toFixed(2))));
     }
     applyBoardTransform(board);
   }
@@ -1978,6 +1999,11 @@
     const pointerDistance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     canvas.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
+      // 画笔状态下第二根手指只用于触控操作，不参与绘制，避免两指之间连出直线。
+      if (event.pointerType === 'touch' && event.isPrimary === false && board.tool !== 'move') {
+        event.preventDefault();
+        return;
+      }
       if (board.tool === 'move') {
         board.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (board.pointers.size === 2) {
@@ -2012,13 +2038,17 @@
       event.preventDefault();
     });
     canvas.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch' && event.isPrimary === false && board.tool !== 'move') {
+        event.preventDefault();
+        return;
+      }
       if (board.pointers.has(event.pointerId)) {
         board.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       }
       if (board.pinching && board.pointers.size >= 2) {
         const pointers = [...board.pointers.values()].slice(0, 2);
         const distance = Math.max(1, pointerDistance(pointers[0], pointers[1]));
-        board.zoom = Math.max(0.5, Math.min(3, board.pinchStartZoom * (distance / board.pinchStartDistance)));
+        board.zoom = Math.max(0.5, Math.min(maxBoardZoom(board), board.pinchStartZoom * (distance / board.pinchStartDistance)));
         applyBoardTransform(board);
         event.preventDefault();
         return;
@@ -2037,6 +2067,10 @@
       event.preventDefault();
     });
     const end = (event) => {
+      if (event.pointerType === 'touch' && event.isPrimary === false && board.tool !== 'move') {
+        event.preventDefault();
+        return;
+      }
       board.pointers.delete(event.pointerId);
       if (board.pointers.size < 2 && board.pinching) {
         board.pinching = false;
@@ -3202,6 +3236,11 @@
     if (cameraPhotoButton) cameraPhotoButton.addEventListener('click', captureCameraPhoto);
     $$('[data-camera-lock]').forEach((button) => button.addEventListener('click', toggleCameraLock));
     $$('[data-camera-photo]').forEach((button) => button.addEventListener('click', captureCameraPhoto));
+    $$('[data-camera-reconnect]').forEach((button) => button.addEventListener('click', () => {
+      if (state.cameraLocked) toggleCameraLock();
+      showToast('正在重新连接展台…', { type: 'info', duration: 1800 });
+      startCamera(state.cameraDeviceId);
+    }));
     $$('[data-camera-focus]').forEach((button) => button.addEventListener('click', () => applyCameraFocus(button.dataset.cameraFocus)));
     const cameraDeviceSelect = $('#cameraDeviceSelect');
     if (cameraDeviceSelect) cameraDeviceSelect.addEventListener('change', () => startCamera(cameraDeviceSelect.value));
@@ -3248,14 +3287,35 @@
         if (stage?.requestFullscreen) stage.requestFullscreen().catch(() => showToast('无法进入全屏', { type: 'warn' }));
       });
     }
+    const syncBrushWidth = (board) => {
+      $$(`[data-brush-width="${board.name}"]`).forEach((input) => { input.value = String(board.width); });
+      const normal = $(board.name === 'camera' ? '#cameraPenWidth' : '#whiteboardPenWidth');
+      if (normal) normal.value = String(board.width);
+    };
     const cameraPenWidth = $('#cameraPenWidth');
     if (cameraPenWidth) {
-      cameraPenWidth.addEventListener('input', () => { drawingState.camera.width = Number(cameraPenWidth.value) || 4; });
+      cameraPenWidth.addEventListener('input', () => {
+        drawingState.camera.width = Number(cameraPenWidth.value) || 4;
+        syncBrushWidth(drawingState.camera);
+      });
     }
     const whiteboardPenWidth = $('#whiteboardPenWidth');
     if (whiteboardPenWidth) {
-      whiteboardPenWidth.addEventListener('input', () => { drawingState.whiteboard.width = Number(whiteboardPenWidth.value) || 5; });
+      whiteboardPenWidth.addEventListener('input', () => {
+        drawingState.whiteboard.width = Number(whiteboardPenWidth.value) || 5;
+        syncBrushWidth(drawingState.whiteboard);
+      });
     }
+    $$('[data-brush-width]').forEach((input) => {
+      input.addEventListener('input', () => {
+        const board = drawingState[input.dataset.brushWidth];
+        if (!board) return;
+        board.width = Math.max(1, Math.min(24, Number(input.value) || board.width));
+        syncBrushWidth(board);
+      });
+    });
+    syncBrushWidth(drawingState.camera);
+    syncBrushWidth(drawingState.whiteboard);
     const whiteboardFullscreen = $('#whiteboardFullscreen');
     if (whiteboardFullscreen) {
       whiteboardFullscreen.addEventListener('click', () => {
@@ -3397,6 +3457,11 @@
     const englishExamSearch = $('#englishExamSearch');
     if (englishExamSearch) englishExamSearch.addEventListener('click', searchEnglishExam);
     bindEnglishWebControls();
+    const widgetSizeInput = $('#settingsWidgetSize');
+    if (widgetSizeInput) widgetSizeInput.addEventListener('input', () => {
+      const label = $('#settingsWidgetSizeValue');
+      if (label) label.textContent = widgetSizeInput.value;
+    });
 
     const settingsSaveKey = $('#settingsSaveKey');
     if (settingsSaveKey) settingsSaveKey.addEventListener('click', saveSettingsKey);
@@ -4522,6 +4587,10 @@
     const widget = widgetSettings();
     const widgetEnabled = $('#settingsWidgetEnabled');
     if (widgetEnabled) widgetEnabled.checked = widget.enabled;
+    const widgetSize = $('#settingsWidgetSize');
+    if (widgetSize) widgetSize.value = String(widget.size);
+    const widgetSizeValue = $('#settingsWidgetSizeValue');
+    if (widgetSizeValue) widgetSizeValue.textContent = String(widget.size);
     $$('[data-widget-slot]').forEach((select, index) => {
       select.innerHTML = `<option value="">不显示</option>` + FEATURE_PAGES.map((item) => `<option value="${item.key}"${widget.items[index]?.page === item.key ? ' selected' : ''}>${esc(item.label)}</option>`).join('');
       select.value = widget.items[index]?.page || '';
@@ -4548,7 +4617,8 @@
       }));
     state.settings.widget = normalizeWidgetSettings({
       enabled: $('#settingsWidgetEnabled')?.checked !== false,
-      items: widgetItems
+      items: widgetItems,
+      size: Number($('#settingsWidgetSize')?.value) || 260
     });
     await persistLibrary();
     applyFeatureVisibility();
@@ -6560,13 +6630,13 @@
           <ul class="help-list">
             <li><strong>AI 解答</strong>：填写并加密保存 DeepSeek API Key，可选择模型/推理等级、上传附件、AI 翻译和图片转文字。</li>
             <li><strong>通用设置</strong>：统一设置 AI API Key、模型/推理等级、时事政治弹幕、功能显隐和桌面悬浮快捷球。</li>
-            <li><strong>桌面悬浮快捷键 / 批注</strong>：右下角校徽圆环快捷球可配置 1—5 个功能（默认白板、展台、批注）；关闭软件时快捷球同步退出。</li>
+            <li><strong>桌面悬浮快捷键 / 批注</strong>：右下角校徽圆环快捷球可配置 1—8 个功能、调整大小（默认白板、展台、批注）；关闭软件时快捷球同步退出。</li>
             <li><strong>单词天天练</strong>：高中英语 3500 词库随机出题，英译汉/汉译英四选一，支持昵称通关排名。</li>
             <li><strong>函数图像 / 科学计算器</strong>：绘制多条函数曲线并缩放、拖动，鼠标靠近显示坐标；计算器支持三角函数、对数、幂等。</li>
             <li><strong>环境音量 / 英语往年题 / 英语网</strong>：麦克风检测自习/晨读声级；按外研版课本章节和题型用 AI 整理题目；英语网内置打开 cybertamin.xin/lang/en/。</li>
             <li><strong>时事政治</strong>：聚合人民网、新华网、中国新闻网、中国政府网等权威来源，按高考命题相关性筛选并最多展示 50 条，标注教材章节和命题角度。</li>
             <li><strong>内置浏览器</strong>：默认打开 zz8zszy.cn，地址栏可访问其他网址并支持网页缩放；可在右侧加密保存账号密码，登录页自动填充。</li>
-            <li><strong>展台 / 白板</strong>：支持 1080P/720P/480P 采集、清晰度增强、旋转/镜像、全屏、缩放、鼠标移动、多色批画和橡皮；全屏时底部工具栏可直接控制。</li>
+            <li><strong>展台 / 白板</strong>：展台支持 4K/1080P 采集、旋转/镜像、全屏重连和最高 500% 缩放；全屏展台/白板可调笔粗。白板缩小后四周仍可书写，画笔状态下双指不会连出直线。</li>
             <li><strong>科目投票</strong>：每天按日期为 13 个学科投票，查看结果需要管理员密码。</li>
             <li><strong>随机点名</strong>：导入 Excel/CSV 名单，可一次抽取多人、按可调权重抽取；后台可改名、调整权重、批量/指定删除。</li>
             <li><strong>手机投屏</strong>：手机扫描二维码后通过同一 Wi-Fi 投摄像头或屏幕；蓝牙用于设备配对。</li>

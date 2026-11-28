@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -662,6 +662,8 @@
                     <button type="button" class="fs-tool" data-camera-focus="auto"><span data-icon="camera"></span>对焦</button>
                     <button type="button" class="fs-tool" data-camera-lock><span data-icon="lock"></span>锁定</button>
                     <button type="button" class="fs-tool" data-camera-photo><span data-icon="download"></span>拍照</button>
+                    <button type="button" class="fs-tool" data-camera-reconnect><span data-icon="refresh"></span>重连</button>
+                    <label class="fs-width">笔粗<input type="range" data-brush-width="camera" min="1" max="18" value="4"></label>
                     <span class="fs-divider"></span>
                     <button type="button" class="fs-tool" data-zoom-action="out" data-board="camera">−</button>
                     <span class="fs-zoom" data-zoom-label="camera">100%</span>
@@ -725,7 +727,7 @@
                       <button type="button" class="drawing-tool" data-draw-clear><span data-icon="refresh"></span>清空批画</button>
                     </div>
                     <label class="drawing-width">笔迹粗细 <input type="range" id="cameraPenWidth" min="1" max="16" value="4"></label>
-                    <p class="camera-hint">提示：展台模糊时优先选择「超清 4K」或「高清 1080P」并重连；选择「鼠标」后可拖动画面，滚轮可缩放。</p>
+                    <p class="camera-hint">提示：展台模糊时优先选择「超清 4K」或「高清 1080P」并重连；选择「鼠标」后可拖动画面，滚轮可缩放，展台最高 500%。</p>
                   </div>
                 </aside>
               </div>
@@ -763,6 +765,7 @@
                     <span class="fs-zoom" id="whiteboardFullscreenPageLabel">1/1</span>
                     <button type="button" class="fs-tool" data-whiteboard-page="next">›</button>
                     <button type="button" class="fs-tool" data-whiteboard-page="add">＋页</button>
+                    <label class="fs-width">笔粗<input type="range" data-brush-width="whiteboard" min="1" max="18" value="5"></label>
                     <span class="fs-divider"></span>
                     <button type="button" class="fs-tool" data-zoom-action="out" data-board="whiteboard">−</button>
                     <span class="fs-zoom" data-zoom-label="whiteboard">100%</span>
@@ -1345,8 +1348,12 @@
                       <label class="question-field"><span>快捷键 3</span><select data-widget-slot="2"></select></label>
                       <label class="question-field"><span>快捷键 4</span><select data-widget-slot="3"></select></label>
                       <label class="question-field"><span>快捷键 5</span><select data-widget-slot="4"></select></label>
+                      <label class="question-field"><span>快捷键 6</span><select data-widget-slot="5"></select></label>
+                      <label class="question-field"><span>快捷键 7</span><select data-widget-slot="6"></select></label>
+                      <label class="question-field"><span>快捷键 8</span><select data-widget-slot="7"></select></label>
                     </div>
-                    <p class="settings-note">悬浮快捷键中间为八中校徽，点击外侧功能键可打开对应功能；关闭上面的开关即可隐藏。</p>
+                    <label class="camera-clarity-field widget-size-field"><span>悬浮球大小 <b id="settingsWidgetSizeValue">260</b> px</span><input id="settingsWidgetSize" type="range" min="240" max="380" step="10" value="260"></label>
+                    <p class="settings-note">悬浮快捷键中间为八中校徽，点击外侧功能键可打开对应功能；可设置 1—8 个功能并调整大小，关闭上面的开关即可隐藏。</p>
                   </div>
                 </div>
               </section>
@@ -1420,7 +1427,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.1.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.2.0</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中集成桌面教学系统</strong><span>课件管理 · 课堂互动 · 教学工具</span></div>

@@ -6,6 +6,11 @@
   <title>八中快捷</title>
   <style>
     :root {
+      --widget-size: 260px;
+      --slot-size: calc(var(--widget-size) * 0.20);
+      --slot-radius: calc(var(--widget-size) * 0.34);
+      --slot-angle: -90deg;
+      --slot-counter-angle: 90deg;
       --ink: #244f6d;
       --blue: #347fb5;
       --line: rgba(137, 187, 222, 0.55);
@@ -45,8 +50,8 @@
       top: 50%;
       display: grid;
       place-items: center;
-      width: 76px;
-      height: 76px;
+      width: calc(var(--widget-size) * 0.28);
+      height: calc(var(--widget-size) * 0.28);
       transform: translate(-50%, -50%);
       overflow: hidden;
       background: #fff;
@@ -76,9 +81,12 @@
       display: grid;
       place-items: center;
       gap: 3px;
-      width: 59px;
-      height: 59px;
+      left: 50%;
+      top: 50%;
+      width: var(--slot-size);
+      height: var(--slot-size);
       padding: 0;
+      transform: translate(-50%, -50%) rotate(var(--slot-angle)) translateY(calc(var(--slot-radius) * -1)) rotate(var(--slot-counter-angle));
       color: var(--ink);
       background: rgba(255,255,255,.86);
       border: 1px solid rgba(131, 184, 219, .55);
@@ -89,29 +97,23 @@
       transition: transform .16s, box-shadow .16s, background .16s;
     }
     .widget-slot:hover {
-      transform: scale(1.08);
+      transform: translate(-50%, -50%) rotate(var(--slot-angle)) translateY(calc(var(--slot-radius) * -1)) rotate(var(--slot-counter-angle)) scale(1.08);
       background: #fff;
       box-shadow: 0 7px 17px rgba(38, 92, 127, .2);
     }
     .widget-slot .slot-mark {
       display: grid;
       place-items: center;
-      width: 24px;
-      height: 24px;
+      width: calc(var(--widget-size) * 0.09);
+      height: calc(var(--widget-size) * 0.09);
       font-family: Georgia, "Times New Roman", serif;
-      font-size: 14px;
+      font-size: calc(var(--widget-size) * 0.052);
       font-weight: 700;
       color: #2f7fb5;
       background: #edf8ff;
       border-radius: 50%;
     }
-    .widget-slot .slot-label { font-size: 9px; font-weight: 600; white-space: nowrap; }
-    .widget-slot[data-slot="0"] { left: 29px; top: 38px; }
-    .widget-slot[data-slot="1"] { right: 29px; top: 38px; }
-    .widget-slot[data-slot="2"] { left: 50%; bottom: 20px; transform: translateX(-50%); }
-    .widget-slot[data-slot="2"]:hover { transform: translateX(-50%) scale(1.08); }
-    .widget-slot[data-slot="3"] { left: 8px; bottom: 62px; }
-    .widget-slot[data-slot="4"] { right: 8px; bottom: 62px; }
+    .widget-slot .slot-label { font-size: calc(var(--widget-size) * 0.034); font-weight: 600; white-space: nowrap; }
     .widget-close {
       position: absolute;
       top: 6px;
@@ -153,7 +155,6 @@
 </head>
 <body>
   <div class="widget-shell">
-    <span class="widget-title">ZZBZ · 快捷工具</span>
     <div class="widget-center">
       <img src="../assets/school-badge.png" alt="八中校徽">
       <span>八中</span>
@@ -163,6 +164,9 @@
     <button type="button" class="widget-slot" data-slot="2"><span class="slot-mark">批</span><span class="slot-label">批注</span></button>
     <button type="button" class="widget-slot" data-slot="3" hidden><span class="slot-mark">英</span><span class="slot-label">英语网</span></button>
     <button type="button" class="widget-slot" data-slot="4" hidden><span class="slot-mark">算</span><span class="slot-label">计算器</span></button>
+    <button type="button" class="widget-slot" data-slot="5" hidden><span class="slot-mark">时</span><span class="slot-label">计时器</span></button>
+    <button type="button" class="widget-slot" data-slot="6" hidden><span class="slot-mark">音</span><span class="slot-label">环境音量</span></button>
+    <button type="button" class="widget-slot" data-slot="7" hidden><span class="slot-mark">网</span><span class="slot-label">内置浏览器</span></button>
   </div>
   <button type="button" class="widget-close" id="widgetClose" title="隐藏悬浮快捷键">×</button>
   <script>
@@ -171,6 +175,9 @@
       const slots = Array.from(document.querySelectorAll('.widget-slot'));
       const applyConfig = (config) => {
         const items = config && Array.isArray(config.items) ? config.items : [];
+        const size = Math.max(240, Math.min(380, Number(config && config.size) || 260));
+        document.documentElement.style.setProperty('--widget-size', `${size}px`);
+        const visible = [];
         slots.forEach((slot, index) => {
           const item = items[index];
           slot.hidden = !item;
@@ -179,6 +186,15 @@
           slot.querySelector('.slot-mark').textContent = marks[item.page] || (item.label || '·').slice(0, 1);
           slot.querySelector('.slot-label').textContent = item.label || item.page;
           slot.title = item.label || item.page;
+          visible.push(slot);
+        });
+        visible.forEach((slot, index) => {
+          const count = Math.max(1, visible.length);
+          // 3 个以上时整体旋转半个间隔，避免顶部正中的按钮压住标题。
+          const offset = count > 2 ? 180 / count : 0;
+          const angle = -90 + offset + (360 / count) * index;
+          slot.style.setProperty('--slot-angle', `${angle}deg`);
+          slot.style.setProperty('--slot-counter-angle', `${-angle}deg`);
         });
       };
       slots.forEach((slot) => {

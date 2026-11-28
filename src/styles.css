@@ -7787,6 +7787,22 @@ button.matrix-cell.has-value:hover {
   height: 15px;
 }
 
+.fs-width {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  font-family: var(--font);
+  font-size: 9px;
+  color: #dcecf8;
+  white-space: nowrap;
+}
+
+.fs-width input {
+  width: 62px;
+  accent-color: #6bb6df;
+}
+
 .fs-divider {
   width: 1px;
   height: 25px;
@@ -9440,6 +9456,7 @@ button.matrix-cell.has-value:hover {
 .settings-feature-item { display: flex; align-items: center; gap: 5px; padding: 6px 7px; font-size: 8px; color: #5e7d93; background: #fbfdff; border: 1px solid #e8f2fa; border-radius: 6px; cursor: pointer; }
 .settings-feature-item input { accent-color: #3f8bc2; }
 .settings-widget-block { padding-top: 11px; border-top: 1px solid #edf5fb; }
+.widget-size-field { max-width: 420px; margin-top: 12px; }
 .settings-widget-slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .settings-widget-slots .question-field { margin: 0; }
 @media (max-width: 900px) { .settings-feature-grid { grid-template-columns: repeat(2, 1fr); } .settings-widget-slots { grid-template-columns: 1fr; } }
