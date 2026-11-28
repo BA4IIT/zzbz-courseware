@@ -9580,6 +9580,8 @@ button.matrix-cell.has-value:hover {
 .englishweb-toolbar .btn { height: 29px; font-size: 8px; }
 .englishweb-address { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; height: 29px; padding: 0 9px; overflow: hidden; font-size: 8px; color: #7994a8; text-overflow: ellipsis; white-space: nowrap; background: #fff; border: 1px solid #e4f0f9; border-radius: 6px; }
 .englishweb-address .icon-svg { width: 11px; height: 11px; color: #68a1c0; flex: 0 0 auto; }
+.englishweb-address input { flex: 1; min-width: 0; height: 100%; padding: 0; font-family: inherit; font-size: 8px; color: #5a7890; background: transparent; border: 0; outline: none; }
+.englishweb-go { height: 29px; padding: 0 10px; font-size: 8px; }
 .englishweb-status { font-size: 7px; color: #9cb0bf; white-space: nowrap; }
 .englishweb-stage { position: relative; height: calc(100vh - 245px); min-height: 420px; background: #f4faff; }
 #englishWebview { display: flex; width: 100%; height: 100%; border: 0; }
@@ -9600,6 +9602,8 @@ button.matrix-cell.has-value:hover {
 .clock-face { display: grid; place-items: center; min-height: 360px; }
 .clock-analog { position: relative; width: 320px; height: 320px; border: 4px solid #d3e7f5; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 9px #f3fbff, 0 10px 26px rgba(41,94,132,.12); }
 .clock-dial { position: absolute; inset: 8%; border-radius: 50%; background: repeating-conic-gradient(from -1deg, #c7deee 0deg 1deg, transparent 1deg 30deg); mask: radial-gradient(circle, transparent 0 88%, #000 88%); -webkit-mask: radial-gradient(circle, transparent 0 88%, #000 88%); }
+.clock-numbers { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.clock-numbers span { position: absolute; transform: translate(-50%, -50%); font-family: Georgia, "Times New Roman", serif; font-size: 18px; font-weight: 700; color: #527b98; }
 .clock-hand { position: absolute; left: 50%; bottom: 50%; transform-origin: 50% 100%; border-radius: 8px; z-index: 2; }
 .clock-hour { width: 8px; height: 24%; margin-left: -4px; background: #315a78; }
 .clock-minute { width: 5px; height: 34%; margin-left: -2.5px; background: #3f87b3; }
@@ -9612,6 +9616,7 @@ button.matrix-cell.has-value:hover {
 .clock-card:fullscreen .clock-face { flex: 1; }
 .clock-card:fullscreen .clock-analog { width: min(62vh, 62vw); height: min(62vh, 62vw); }
 .clock-card:fullscreen .clock-digital strong { font-size: min(18vh, 16vw); }
+.clock-card:fullscreen .clock-numbers span { font-size: min(3.4vh, 3vw); }
 .clock-exit { display: none; }
 .clock-card:fullscreen .clock-exit { display: inline-flex; position: absolute; right: 22px; top: 18px; }
 .timer-style-tabs { display: flex; justify-content: center; gap: 4px; margin-bottom: 4px; }
@@ -9623,3 +9628,22 @@ button.matrix-cell.has-value:hover {
 .camera-content, .whiteboard-content, .annotation-content { will-change: transform; backface-visibility: hidden; }
 .camera-content canvas, .whiteboard-content canvas, .annotation-content canvas { will-change: transform; backface-visibility: hidden; }
 .graph-canvas-wrap canvas { will-change: transform; backface-visibility: hidden; }
+.camera-head-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+@media (max-width: 760px) { .camera-head-actions { align-items: flex-start; } }
+/* 悬浮球打开展台时的纯净全屏模式（主窗口全屏，不依赖页面 Fullscreen 手势） */
+body.camera-presentation .titlebar,
+body.camera-presentation .sidebar,
+body.camera-presentation .topbar,
+body.camera-presentation #page-camera > .page-heading,
+body.camera-presentation #page-camera .camera-controls { display: none !important; }
+body.camera-presentation .app-window,
+body.camera-presentation .app-body,
+body.camera-presentation .main-shell,
+body.camera-presentation .main-scroll { height: 100vh !important; width: 100vw !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+body.camera-presentation #page-camera { height: 100vh !important; margin: 0 !important; padding: 0 !important; }
+body.camera-presentation .camera-layout { display: block !important; height: 100vh !important; }
+body.camera-presentation .camera-card { height: 100vh !important; border: 0 !important; border-radius: 0 !important; }
+body.camera-presentation .camera-stage { height: 100vh !important; min-height: 100vh !important; border-radius: 0 !important; }
+body.camera-presentation .stage-exit-fullscreen { display: inline-flex !important; }
+body.camera-presentation .camera-side-tools { display: flex !important; }
+body.camera-presentation .fullscreen-toolbar { display: flex !important; }

@@ -1,4 +1,4 @@
-/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
+﻿/* 浏览器预览适配器：仅用于界面预览与验收，正式使用请通过桌面程序启动。
  * 访问 index.html?mock=1 时启用。 */
 (function () {
   'use strict';
@@ -105,8 +105,8 @@
     async checkUpdate() {
       return {
         ok: true,
-        currentVersion: '2.3.0',
-        latestVersion: '2.3.0',
+        currentVersion: '2.3.1',
+        latestVersion: '2.3.1',
         isLatest: true,
         updateAvailable: false,
         releaseUrl: 'https://github.com/BA4IIT/zzbz-courseware/releases',
@@ -142,6 +142,7 @@
     async captureScreen() { return { ok: false, error: '浏览器预览模式不能截取桌面。' }; },
     async openClockFloat() { return { ok: false, error: '浏览器预览模式不支持悬浮时间。' }; },
     async openAnnotationOverlay() { return { ok: false, error: '浏览器预览模式不支持上层批注。' }; },
+    async setWindowFullscreen() { return { ok: false }; },
     widget: { async configure() { return { ok: true }; }, hide() {} },
     onNavigate() { return () => {}; },
     browserCredentials: {
@@ -169,7 +170,7 @@
       return {
         ok: true,
         name: '枣庄八中集成桌面教学系统',
-        version: '2.3.0',
+        version: '2.3.1',
         dataDir: '浏览器预览模式',
         libraryPath: 'localStorage',
         electron: '-',

@@ -638,7 +638,10 @@
                   <h1>展台</h1>
                   <p>自动获取已连接摄像头，把作业、试卷或实验过程投到屏幕上，并可直接批画。</p>
                 </div>
-                <div class="camera-head-status" id="cameraHeadStatus"><i></i><span>等待摄像头</span></div>
+                <div class="camera-head-actions">
+                  <button type="button" class="btn btn-primary" id="cameraFullscreenTop"><span data-icon="monitor"></span>全屏投放</button>
+                  <div class="camera-head-status" id="cameraHeadStatus"><i></i><span>等待摄像头</span></div>
+                </div>
               </div>
               <div class="camera-layout">
                 <div class="camera-stage" id="cameraStage">
@@ -1242,7 +1245,8 @@
                   <button type="button" class="btn btn-light" id="englishWebBack"><span data-icon="arrowLeft"></span>后退</button>
                   <button type="button" class="btn btn-light" id="englishWebForward"><span data-icon="arrowRight"></span>前进</button>
                   <button type="button" class="btn btn-light" id="englishWebReload"><span data-icon="refresh"></span>刷新</button>
-                  <div class="englishweb-address"><span data-icon="lock"></span>https://cybertamin.xin/lang/en/</div>
+                  <div class="englishweb-address"><span data-icon="lock"></span><input id="englishWebAddress" type="text" value="https://cybertamin.xin/lang/en/" spellcheck="false" autocomplete="off"></div>
+                  <button type="button" class="btn btn-primary englishweb-go" id="englishWebGo">转到</button>
                   <span class="englishweb-status" id="englishWebStatus">准备打开</span>
                 </div>
                 <div class="englishweb-stage">
@@ -1309,6 +1313,7 @@
                 <div class="clock-face">
                   <div class="clock-analog" id="clockAnalog">
                     <div class="clock-dial"><i class="clock-tick"></i></div>
+                    <div class="clock-numbers" id="clockNumbers"></div>
                     <div class="clock-hand clock-hour" id="clockHourHand"></div>
                     <div class="clock-hand clock-minute" id="clockMinuteHand"></div>
                     <div class="clock-hand clock-second" id="clockSecondHand"></div>
@@ -1477,7 +1482,7 @@
                 </section>
 
                 <section class="data-card info-card">
-                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.3.0</span></div>
+                  <div class="data-card-head"><div><span class="panel-kicker">ABOUT</span><h3>关于系统</h3></div><span class="version-tag" id="appVersion">v2.3.1</span></div>
                   <div class="about-brand">
                     <div class="about-mark"><img src="../assets/school-badge.png" alt="枣庄八中校徽"></div>
                     <div><strong>枣庄八中集成桌面教学系统</strong><span>课件管理 · 课堂互动 · 教学工具</span></div>

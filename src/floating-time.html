@@ -28,6 +28,8 @@
     .float-digital span { display: block; margin-top: 4px; font-size: calc(var(--size) * .052); color: #8ba6b8; }
     .float-analog { position: absolute; left: 50%; top: 50%; width: calc(var(--size) * .76); height: calc(var(--size) * .76); transform: translate(-50%, -47%); border: 2px solid #cfe5f3; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 6px #f1faff; }
     .float-analog::after { content: ""; position: absolute; inset: 9%; border: 1px dashed #dcecf6; border-radius: 50%; }
+    .float-numbers { position: absolute; inset: 0; pointer-events: none; }
+    .float-numbers span { position: absolute; transform: translate(-50%, -50%); font-family: Georgia, serif; font-size: calc(var(--size) * .055); font-weight: 700; color: #527b98; }
     .float-hand { position: absolute; left: 50%; bottom: 50%; transform-origin: 50% 100%; border-radius: 5px; }
     .float-hour { width: 5px; height: 28%; margin-left: -2.5px; background: #315a78; }
     .float-minute { width: 3.5px; height: 37%; margin-left: -1.75px; background: #3f87b3; }
@@ -45,6 +47,7 @@
     </div>
     <div class="float-analog-view" id="floatAnalogView">
       <div class="float-analog">
+        <div class="float-numbers" id="floatNumbers"></div>
         <i class="float-hand float-hour" id="floatHour"></i>
         <i class="float-hand float-minute" id="floatMinute"></i>
         <i class="float-hand float-second" id="floatSecond"></i>
@@ -67,6 +70,15 @@
       const secondHand = document.getElementById('floatSecond');
       if (style === 'digital') { digitalView.hidden = false; analogView.hidden = true; document.getElementById('floatCard').classList.add('is-digital'); }
       else { digitalView.hidden = true; analogView.hidden = false; }
+      const numberBox = document.getElementById('floatNumbers');
+      for (let number = 1; number <= 12; number += 1) {
+        const angle = (number / 12) * Math.PI * 2;
+        const span = document.createElement('span');
+        span.textContent = String(number);
+        span.style.left = `${50 + Math.sin(angle) * 40}%`;
+        span.style.top = `${50 - Math.cos(angle) * 40}%`;
+        numberBox.appendChild(span);
+      }
       const format = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const tick = () => {
         const parts = {};

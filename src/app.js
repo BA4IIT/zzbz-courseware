@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   'use strict';
 
   const DATA = window.ZZBZ_DATA;
@@ -1270,7 +1270,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '2.3.0'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.3.1'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -2000,6 +2000,9 @@
     if (!canvas) return;
     board.initialized = true;
     const resize = () => {
+      // 白板缩小状态下内容层会临时放大；此时反复重设 canvas 尺寸会造成抽搐，
+      // 保持原分辨率、由 CSS 拉伸显示即可，放大回 100% 以上再恢复适配。
+      if (board.name === 'whiteboard' && board.zoom < 1) return;
       resizeDrawingCanvas(board);
       applyBoardTransform(board);
     };
@@ -3289,13 +3292,15 @@
     if (cameraVideo) cameraVideo.addEventListener('loadedmetadata', updateCameraResolutionInfo);
     document.addEventListener('fullscreenchange', () => requestAnimationFrame(applyCameraEnhancements));
     window.addEventListener('resize', applyCameraEnhancements);
-    const cameraFullscreen = $('#cameraFullscreen');
-    if (cameraFullscreen) {
-      cameraFullscreen.addEventListener('click', () => {
-        const stage = $('#cameraStage');
-        if (stage?.requestFullscreen) stage.requestFullscreen().catch(() => showToast('无法进入全屏', { type: 'warn' }));
-      });
-    }
+    const enterCameraFullscreen = () => {
+      const stage = $('#cameraStage');
+      if (!stage || document.fullscreenElement) return;
+      if (stage.requestFullscreen) stage.requestFullscreen().catch(() => showToast('无法进入全屏，请点击页面右上角「全屏投放」。', { type: 'warn' }));
+    };
+    ['#cameraFullscreen', '#cameraFullscreenTop'].forEach((selector) => {
+      const button = $(selector);
+      if (button) button.addEventListener('click', enterCameraFullscreen);
+    });
     const syncBrushWidth = (board) => {
       $$(`[data-brush-width="${board.name}"]`).forEach((input) => { input.value = String(board.width); });
       const normal = $(board.name === 'camera' ? '#cameraPenWidth' : '#whiteboardPenWidth');
@@ -3357,6 +3362,10 @@
     $$('[data-exit-fullscreen]').forEach((button) => {
       button.addEventListener('click', () => {
         if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        if (document.body.classList.contains('camera-presentation')) {
+          document.body.classList.remove('camera-presentation');
+          api.setWindowFullscreen?.(false)?.catch?.(() => {});
+        }
       });
     });
     [['cameraStage', drawingState.camera], ['whiteboardStage', drawingState.whiteboard]].forEach(([stageId, board]) => {
@@ -4209,6 +4218,8 @@
     const updateStatus = () => {
       const url = webview.getURL?.() || '';
       if (status) status.textContent = url ? (url.includes('cybertamin.xin') ? '英语网' : url.replace(/^https?:\/\//, '').slice(0, 42)) : '准备打开';
+      const address = $('#englishWebAddress');
+      if (address && document.activeElement !== address) address.value = url || 'https://cybertamin.xin/lang/en/';
     };
     webview.addEventListener('did-start-loading', () => {
       if (loading) loading.hidden = false;
@@ -4247,6 +4258,19 @@
     const webview = $('#englishWebview');
     const home = $('#englishWebHome');
     if (home) home.addEventListener('click', () => webview?.loadURL('https://cybertamin.xin/lang/en/').catch(() => {}));
+    const address = $('#englishWebAddress');
+    const navigateToAddress = () => {
+      if (!address || !webview) return;
+      let url = String(address.value || '').trim();
+      if (!url) return;
+      if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+      webview.loadURL(url).catch(() => showToast('网址格式不正确或无法打开。', { type: 'warn' }));
+    };
+    const go = $('#englishWebGo');
+    if (go) go.addEventListener('click', navigateToAddress);
+    if (address) address.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); navigateToAddress(); }
+    });
     const back = $('#englishWebBack');
     if (back) back.addEventListener('click', () => webview?.canGoBack?.() && webview.goBack());
     const forward = $('#englishWebForward');
@@ -5002,7 +5026,22 @@
     };
   }
 
+  function ensureClockNumbers() {
+    const container = $('#clockNumbers');
+    if (!container || container.dataset.ready === '1') return;
+    container.dataset.ready = '1';
+    for (let number = 1; number <= 12; number += 1) {
+      const angle = (number / 12) * Math.PI * 2;
+      const span = document.createElement('span');
+      span.textContent = String(number);
+      span.style.left = `${50 + Math.sin(angle) * 41}%`;
+      span.style.top = `${50 - Math.cos(angle) * 41}%`;
+      container.appendChild(span);
+    }
+  }
+
   function renderClock() {
+    ensureClockNumbers();
     const time = beijingParts();
     const timeText = `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}:${String(time.second).padStart(2, '0')}`;
     const digital = $('#clockDigital');
@@ -5074,6 +5113,14 @@
       context.lineWidth = i % 5 === 0 ? 2 : 1;
       context.strokeStyle = i % 5 === 0 ? '#6e9dbd' : '#d8e8f4';
       context.stroke();
+    }
+    context.fillStyle = '#527b98';
+    context.font = `600 ${Math.max(13, Math.round(size * 0.052))}px "Segoe UI", "Microsoft YaHei", sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    for (let number = 1; number <= 12; number += 1) {
+      const angle = (number / 12) * Math.PI * 2;
+      context.fillText(String(number), center + Math.sin(angle) * radius * 0.78, center - Math.cos(angle) * radius * 0.78);
     }
     const remaining = Math.max(0, state.timer.remaining);
     const secondAngle = (remaining % 60) / 60 * Math.PI * 2;
@@ -6944,7 +6991,13 @@
       return;
     }
     if (page !== 'library' && !['data'].includes(page) && !featuresAllows(page)) page = 'library';
-    if (state.page === 'camera' && page !== 'camera') stopCamera();
+    if (state.page === 'camera' && page !== 'camera') {
+      stopCamera();
+      if (document.body.classList.contains('camera-presentation')) {
+        document.body.classList.remove('camera-presentation');
+        api.setWindowFullscreen?.(false)?.catch?.(() => {});
+      }
+    }
     if (state.page === 'phone' && page !== 'phone') {
       api.stopPhoneCast?.().catch(() => {});
       resetPhoneStage();
@@ -7674,7 +7727,22 @@
     bindClassroomToolEvents();
     applyFeatureVisibility();
     applyWidgetSettings();
-    api.onNavigate?.((page) => setPage(page));
+    api.onNavigate?.((payload) => {
+      const page = typeof payload === 'string' ? payload : payload && payload.page;
+      const wantFullscreen = Boolean(payload && payload.fullscreen);
+      if (!page) return;
+      setPage(page);
+      if (wantFullscreen && page === 'camera') {
+        // 悬浮球点击无法把主窗口的 Fullscreen API 当作同一用户手势，
+        // 因此使用主窗口全屏 + 展台纯净模式，保证一定立即全屏。
+        document.body.classList.add('camera-presentation');
+        api.setWindowFullscreen?.(true)?.catch?.(() => {});
+        window.setTimeout(() => {
+          const stage = $('#cameraStage');
+          if (stage && !document.fullscreenElement) stage.requestFullscreen?.().catch(() => {});
+        }, 400);
+      }
+    });
 
     ui.search.addEventListener('input', () => {
       const value = ui.search.value;

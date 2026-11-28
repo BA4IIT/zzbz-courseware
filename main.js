@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -1382,7 +1382,10 @@ function createTray() {
     tray.setToolTip(APP_NAME);
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: '显示主界面', click: showMainWindow },
-      { label: '隐藏到托盘', click: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } },
+      { label: '隐藏到托盘', click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+        if (widgetWindow && !widgetWindow.isDestroyed()) { widgetWindow.destroy(); widgetWindow = null; }
+      } },
       { type: 'separator' },
       { label: '退出软件', click: () => { isQuitting = true; app.quit(); } }
     ]));
@@ -1428,12 +1431,15 @@ function createWidgetWindow() {
   return widgetWindow;
 }
 
-function showMainPage(page) {
+function showMainPage(page, options) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  if (page) mainWindow.webContents.send('app:navigate', normalizeString(page, 40));
+  if (page) mainWindow.webContents.send('app:navigate', {
+    page: normalizeString(page, 40),
+    fullscreen: Boolean(options && options.fullscreen)
+  });
 }
 
 function applyWidgetConfig(raw) {
@@ -2211,6 +2217,11 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle('window:set-fullscreen', async (_event, fullscreen) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return { ok: false };
+    mainWindow.setFullScreen(Boolean(fullscreen));
+    return { ok: true };
+  });
   ipcMain.handle('widget:configure', async (_event, config) => {
     applyWidgetConfig(config);
     return { ok: true };
@@ -2219,6 +2230,10 @@ function registerIpc() {
     const valid = normalizeString(page, 40);
     if (valid === 'annotation') {
       openAnnotationOverlay();
+      return;
+    }
+    if (valid === 'camera') {
+      showMainPage(valid, { fullscreen: true });
       return;
     }
     if (valid) showMainPage(valid);
@@ -2394,7 +2409,11 @@ function createWindow() {
     if (isQuitting) return;
     event.preventDefault();
     mainWindow.hide();
-    if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.hide();
+    // 主窗口隐藏/关闭时立即销毁悬浮球，避免软件还在托盘时悬浮球残留。
+    if (widgetWindow && !widgetWindow.isDestroyed()) {
+      widgetWindow.destroy();
+      widgetWindow = null;
+    }
     if (annotationWindow && !annotationWindow.isDestroyed()) annotationWindow.close();
   });
   mainWindow.on('closed', () => {

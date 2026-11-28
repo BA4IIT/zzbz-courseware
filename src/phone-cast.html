@@ -109,10 +109,26 @@
         if (!navigator.mediaDevices) { setStatus('此浏览器不支持摄像头/屏幕共享，请使用最新版 Chrome 或 Edge'); return; }
         stopStream();
         try {
+          let actualMode = mode;
+          let fallbackNote = '';
           if (mode === 'screen') {
-            if (!navigator.mediaDevices.getDisplayMedia) throw new Error('当前手机浏览器不支持屏幕共享');
-            stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-          } else {
+            if (navigator.mediaDevices.getDisplayMedia) {
+              try {
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                  video: { frameRate: { ideal: 15, max: 20 } },
+                  audio: false
+                });
+              } catch (screenError) {
+                fallbackNote = `当前手机浏览器无法直接共享屏幕（${screenError.name || screenError.message}），已切换为摄像头模式，请将手机对准屏幕。`;
+              }
+            } else {
+              fallbackNote = '当前手机浏览器不支持直接共享屏幕，已切换为摄像头模式，请将手机对准屏幕。';
+            }
+            if (!stream) {
+              actualMode = 'camera';
+            }
+          }
+          if (!stream) {
             stream = await navigator.mediaDevices.getUserMedia({
               audio: false,
               video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -126,7 +142,7 @@
           startCamera.disabled = true;
           startScreen.disabled = true;
           stopButton.disabled = false;
-          setStatus(mode === 'screen' ? '正在共享手机屏幕' : '正在投屏手机摄像头', true);
+          setStatus(fallbackNote || (actualMode === 'screen' ? '正在共享手机屏幕' : '正在投屏手机摄像头'), true);
         } catch (error) {
           stopStream();
           setStatus(`无法开始：${error.message}`);

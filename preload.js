@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('zzbz', {
   captureScreen: (options) => ipcRenderer.invoke('screen:capture', options),
   openClockFloat: (options) => ipcRenderer.invoke('clock:float', options),
   openAnnotationOverlay: () => ipcRenderer.invoke('annotation:open'),
+  setWindowFullscreen: (value) => ipcRenderer.invoke('window:set-fullscreen', value),
   widget: {
     configure: (config) => ipcRenderer.invoke('widget:configure', config),
     hide: () => ipcRenderer.send('widget:hide')
