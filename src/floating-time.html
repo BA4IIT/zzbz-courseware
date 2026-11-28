@@ -59,8 +59,13 @@
     (() => {
       const params = new URLSearchParams(location.search);
       const style = params.get('style') === 'digital' ? 'digital' : 'clock';
-      const size = Math.max(160, Math.min(480, Number(params.get('size')) || 260));
-      document.documentElement.style.setProperty('--size', `${size}px`);
+      const initialSize = Math.max(160, Math.min(480, Number(params.get('size')) || 260));
+      const applyViewportSize = () => {
+        const current = Math.max(160, Math.min(480, innerWidth || initialSize));
+        document.documentElement.style.setProperty('--size', `${current}px`);
+      };
+      applyViewportSize();
+      window.addEventListener('resize', applyViewportSize);
       const digitalView = document.getElementById('floatDigitalView');
       const analogView = document.getElementById('floatAnalogView');
       const digital = document.getElementById('floatDigital');

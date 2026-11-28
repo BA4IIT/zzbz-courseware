@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   'use strict';
 
   const DATA = window.ZZBZ_DATA;
@@ -1270,7 +1270,7 @@
     $('#storageRing').style.background = `conic-gradient(#4b96d7 ${percent}%, #e8f2fb ${percent}%)`;
 
     const version = $('#appVersion');
-    if (version) version.textContent = `v${state.appInfo?.version || '2.3.2'}`;
+    if (version) version.textContent = `v${state.appInfo?.version || '2.3.3'}`;
     const hint = $('#clearDemoHint');
     if (hint) hint.textContent = `移除所有带「示例」标记的记录（${demoCount} 份）`;
     const clearDemoButton = $('#clearDemoButtonData');
@@ -3488,8 +3488,11 @@
     });
     const clockFloatSizeInput = $('#settingsClockFloatSize');
     if (clockFloatSizeInput) clockFloatSizeInput.addEventListener('input', () => {
+      const value = Math.max(160, Math.min(480, Math.round(Number(clockFloatSizeInput.value) || 260)));
+      state.settings.clockFloatSize = value;
       const label = $('#settingsClockFloatSizeValue');
-      if (label) label.textContent = clockFloatSizeInput.value;
+      if (label) label.textContent = String(value);
+      api.resizeClockFloat?.({ size: value, style: state.clockStyle })?.catch?.(() => {});
     });
 
     const settingsSaveKey = $('#settingsSaveKey');
@@ -5076,10 +5079,9 @@
       showToast('当前版本不支持悬浮时间。', { type: 'warn' });
       return;
     }
-    const result = await api.openClockFloat({
-      style: state.clockStyle,
-      size: Number(state.settings.clockFloatSize) || 260
-    });
+    const size = Math.max(160, Math.min(480, Math.round(Number($('#settingsClockFloatSize')?.value) || Number(state.settings.clockFloatSize) || 260)));
+    state.settings.clockFloatSize = size;
+    const result = await api.openClockFloat({ style: state.clockStyle, size });
     if (result && result.ok === false) showToast(result.error || '无法打开悬浮时间', { type: 'warn' });
     else showToast('北京时间已悬浮显示，可拖动窗口调整位置。', { type: 'success' });
   }

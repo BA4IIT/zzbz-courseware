@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('zzbz', {
   searchPolitics: (payload) => ipcRenderer.invoke('politics:search', payload),
   captureScreen: (options) => ipcRenderer.invoke('screen:capture', options),
   openClockFloat: (options) => ipcRenderer.invoke('clock:float', options),
+  resizeClockFloat: (options) => ipcRenderer.invoke('clock:resize', options),
   openAnnotationOverlay: () => ipcRenderer.invoke('annotation:open'),
   setWindowFullscreen: (value) => ipcRenderer.invoke('window:set-fullscreen', value),
   widget: {

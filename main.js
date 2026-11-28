@@ -53,7 +53,7 @@ try {
 }
 
 const APP_NAME = '枣庄八中集成桌面教学系统';
-const APP_VERSION = '2.3.2';
+const APP_VERSION = '2.3.3';
 const UPDATE_REPO = 'BA4IIT/zzbz-courseware';
 const UPDATE_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
 const BROWSER_HOME = 'https://zz8zszy.cn';
@@ -894,6 +894,7 @@ async function askDeepSeek(payload) {
 let phoneCast = null;
 let widgetWindow = null;
 let clockWindow = null;
+let clockWindowStyle = 'clock';
 let annotationWindow = null;
 let tray = null;
 let isQuitting = false;
@@ -2267,10 +2268,11 @@ function registerIpc() {
       const style = options && options.style === 'digital' ? 'digital' : 'clock';
       const size = Math.max(160, Math.min(480, Math.round(Number(options && options.size) || 260)));
       if (clockWindow && !clockWindow.isDestroyed()) clockWindow.destroy();
+      clockWindowStyle = style;
       const display = screen.getPrimaryDisplay();
       const width = size;
       const height = style === 'digital' ? Math.round(size * 0.52) : size;
-      clockWindow = new BrowserWindow({
+      const win = new BrowserWindow({
         width, height,
         x: display.workArea.x + display.workArea.width - width - 24,
         y: display.workArea.y + 60,
@@ -2284,13 +2286,32 @@ function registerIpc() {
         backgroundColor: '#eef8ff',
         webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false }
       });
-      clockWindow.setAlwaysOnTop(true, 'screen-saver');
-      clockWindow.loadFile(path.join(__dirname, 'src', 'floating-time.html'), {
+      win.setAlwaysOnTop(true, 'screen-saver');
+      win.loadFile(path.join(__dirname, 'src', 'floating-time.html'), {
         query: { style, size: String(size) }
       }).catch(() => {});
-      clockWindow.on('closed', () => { clockWindow = null; });
+      win.on('closed', () => { if (clockWindow === win) clockWindow = null; });
+      clockWindow = win;
       return { ok: true };
     } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clock:resize', async (_event, options) => {
+    if (!clockWindow || clockWindow.isDestroyed()) return { ok: false };
+    const size = Math.max(160, Math.min(480, Math.round(Number(options && options.size) || 260)));
+    const width = size;
+    const height = clockWindowStyle === 'digital' ? Math.round(size * 0.52) : size;
+    const wasResizable = clockWindow.isResizable();
+    try {
+      if (!wasResizable) clockWindow.setResizable(true);
+      clockWindow.setMinimumSize(160, 83);
+      clockWindow.setSize(width, height);
+      if (!wasResizable) clockWindow.setResizable(false);
+      return { ok: true };
+    } catch (error) {
+      if (!wasResizable && !clockWindow.isDestroyed()) clockWindow.setResizable(false);
       return { ok: false, error: error.message };
     }
   });
